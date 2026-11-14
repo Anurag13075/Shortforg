@@ -5,9 +5,6 @@ zerops:
   - setup: nodejs
     build:
       base: nodejs@22
-      prepareCommands:
-        # Alpine Linux package manager for FFmpeg
-        - apk add --no-cache ffmpeg
       buildCommands:
         # Install dependencies for root, backend, and frontend
         - npm run install:all
@@ -24,8 +21,8 @@ zerops:
     run:
       base: nodejs@22
       prepareCommands:
-        # Ensure FFmpeg is present in runtime container
-        - apk add --no-cache ffmpeg
+        # Install FFmpeg with sudo for runtime video processing
+        - sudo apk add --no-cache ffmpeg || apk add --no-cache ffmpeg
       initCommands:
         # Ensure persistent storage directories exist
         - mkdir -p /var/storage /var/data
