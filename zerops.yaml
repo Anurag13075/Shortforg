@@ -2,11 +2,12 @@
 # Full-stack Node.js + Vite Studio with native FFmpeg & SQLite persistence
 
 zerops:
-  - setup: app
+  # The setup name must match your Zerops service hostname ("nodejs")
+  - setup: nodejs
     build:
       base: nodejs@22
       prepareCommands:
-        # Install FFmpeg and build essentials for Ubuntu base
+        # Install FFmpeg and python3 on Ubuntu base
         - apt-get update && apt-get install -y ffmpeg python3
       buildCommands:
         # Install dependencies for root, backend, and frontend
