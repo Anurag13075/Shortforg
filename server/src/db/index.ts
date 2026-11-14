@@ -1,11 +1,11 @@
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
+import initSqlJs from 'sql.js';
 import fs from 'fs';
 import { CONFIG } from '../config.js';
 
 // Initialize WebAssembly-powered SQLite (Zero C++ native compilation, 100% portable)
 const SQL = await initSqlJs();
 
-let rawDb: SqlJsDatabase;
+let rawDb: any;
 if (fs.existsSync(CONFIG.DB_PATH)) {
   try {
     const fileBuffer = fs.readFileSync(CONFIG.DB_PATH);
