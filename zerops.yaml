@@ -1,0 +1,41 @@
+# Zerops Recipe for ShortsForge
+# Full-stack Node.js + Vite Studio with native FFmpeg & SQLite persistence
+
+zerops:
+  - setup: app
+    build:
+      base: nodejs@22
+      prepareCommands:
+        # Install FFmpeg and build essentials for Ubuntu base
+        - apt-get update && apt-get install -y ffmpeg python3
+      buildCommands:
+        # Install dependencies for root, backend, and frontend
+        - npm run install:all
+        # Build TypeScript server and Vite client
+        - npm run build
+      deployFiles:
+        - server/dist
+        - server/package.json
+        - server/node_modules
+        - client/dist
+        - package.json
+        - node_modules
+
+    run:
+      base: nodejs@22
+      prepareCommands:
+        # Ensure FFmpeg is available in the runtime container
+        - apt-get update && apt-get install -y ffmpeg
+      initCommands:
+        # Ensure persistent storage directories exist
+        - mkdir -p /var/storage /var/data
+      start: node server/dist/index.js
+      ports:
+        - port: 3001
+          httpSupport: true
+      envVariables:
+        NODE_ENV: production
+        PORT: 3001
+        STORAGE_DIR: /var/storage
+        DATA_DIR: /var/data
+        DB_PATH: /var/data/shortsforge.db

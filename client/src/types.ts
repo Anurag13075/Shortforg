@@ -1,0 +1,84 @@
+export interface Project {
+  id: string;
+  youtube_url: string;
+  title: string | null;
+  duration: number;
+  source_video_path: string | null;
+  status: 'pending' | 'downloading' | 'transcribing' | 'analyzing' | 'rendering' | 'completed' | 'failed';
+  progress: number;
+  stage_message: string;
+  error_message: string | null;
+  clip_count?: number;
+  approved_count?: number;
+  clips?: Clip[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Clip {
+  id: string;
+  project_id: string;
+  title: string;
+  caption: string | null;
+  hashtags: string | null;
+  hook_line: string | null;
+  virality_score: number;
+  reason: string | null;
+  start_time: number;
+  end_time: number;
+  crop_offset_x: number;
+  video_path: string | null;
+  thumbnail_path: string | null;
+  status: 'draft' | 'approved' | 'rejected' | 'rendering';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Channel {
+  id: string;
+  title: string;
+  avatar_url: string | null;
+  status: 'active' | 'reconnect_needed';
+  created_at: string;
+  updated_at: string;
+  total_posted?: number;
+  total_scheduled?: number;
+}
+
+export interface QueueItem {
+  id: string;
+  clip_id: string;
+  channel_id: string;
+  scheduled_time: string;
+  status: 'scheduled' | 'posting' | 'posted' | 'failed';
+  youtube_video_id: string | null;
+  retry_count: number;
+  error_message: string | null;
+  posted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  clip_title?: string;
+  virality_score?: number;
+  hook_line?: string;
+  thumbnail_path?: string;
+  video_path?: string;
+  channel_title?: string;
+  channel_avatar?: string;
+  channel_status?: string;
+}
+
+export interface HealthInfo {
+  status: string;
+  ffmpeg: {
+    available: boolean;
+    message: string;
+    version?: string;
+  };
+  config: {
+    hasVidKraken: boolean;
+    hasGroq: boolean;
+    hasGoogleOAuth: boolean;
+    appUrl: string;
+    googleRedirectUri: string;
+  };
+}
