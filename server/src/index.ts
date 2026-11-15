@@ -95,7 +95,7 @@ app.get('/api/health', (_req, res) => {
 const clientDist = path.resolve(__dirname, '../../client/dist');
 if (fs.existsSync(clientDist)) {
   app.use(express.static(clientDist));
-  app.get('*', (req, res, next) => {
+  app.get('*', (req: any, res: any, next: any) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/auth') || req.path.startsWith('/storage')) {
       return next();
     }

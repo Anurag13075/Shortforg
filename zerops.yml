@@ -6,10 +6,12 @@ zerops:
     build:
       base: nodejs@22
       buildCommands:
-        # Install dependencies for root, backend, and frontend
-        - npm run install:all
-        # Build TypeScript server and Vite client
-        - npm run build
+        # Build server (TypeScript -> server/dist)
+        - cd server && npm install && npm run build
+        # Build client (Vite -> client/dist)
+        - cd ../client && npm install && npm run build
+        # Return to repository root for deployFiles
+        - cd ..
       deployFiles:
         - server/dist
         - server/package.json
