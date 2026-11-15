@@ -16,7 +16,6 @@ zerops:
         - server/node_modules
         - client/dist
         - package.json
-        - node_modules
 
     run:
       base: nodejs@22
