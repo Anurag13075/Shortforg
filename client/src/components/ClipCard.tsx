@@ -12,7 +12,8 @@ import {
   Loader2,
   Clock,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Share2
 } from 'lucide-react';
 import { Clip } from '../types';
 import { api } from '../api';
@@ -41,19 +42,13 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
   const [isSaving, setIsSaving] = useState(false);
   const [isRendering, setIsRendering] = useState(clip.status === 'rendering');
 
-  const formatTime = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  };
-
   const clipDuration = Math.round(clip.end_time - clip.start_time);
 
   const handleStatusChange = async (newStatus: 'approved' | 'rejected' | 'draft') => {
     try {
       const updated = await api.updateClip(clip.id, { status: newStatus });
       onUpdate(updated);
-      onToast(`Clip marked as ${newStatus}`, 'success');
+      onToast(`Short marked as ${newStatus}`, 'success');
     } catch (err: any) {
       onToast(`Failed to update status: ${err.message}`, 'error');
     }
@@ -76,7 +71,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
 
       onUpdate(updated);
       setIsEditing(false);
-      onToast('Clip edits saved', 'success');
+      onToast('Changes saved', 'success');
     } catch (err: any) {
       onToast(`Save failed: ${err.message}`, 'error');
     } finally {
@@ -86,11 +81,11 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
 
   const handleRegenerate = async () => {
     setIsRendering(true);
-    onToast('Re-rendering 9:16 clip with new crop offset...', 'info');
+    onToast('Re-rendering 9:16 vertical crop with FFmpeg...', 'info');
     try {
       const updated = await api.renderClip(clip.id, cropOffset);
       onUpdate(updated);
-      onToast('Clip re-rendered successfully!', 'success');
+      onToast('Short re-rendered successfully!', 'success');
     } catch (err: any) {
       onToast(`Re-render failed: ${err.message}`, 'error');
     } finally {
@@ -100,16 +95,16 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
 
   return (
     <div
-      className={`craft-card rounded-2xl overflow-hidden flex flex-col transition-all duration-300 ${
+      className={`bento-card overflow-hidden flex flex-col transition-all duration-300 ${
         clip.status === 'approved'
           ? 'ring-1 ring-emerald-500/40 border-emerald-500/30'
           : clip.status === 'rejected'
-          ? 'opacity-40 grayscale-[40%]'
+          ? 'opacity-40 grayscale-[50%]'
           : ''
       }`}
     >
       {/* Top Header: Score & Media Switcher */}
-      <div className="p-3 bg-zinc-950/60 border-b border-white/[0.05] flex items-center justify-between">
+      <div className="p-3.5 bg-white/[0.01] border-b border-white/[0.05] flex items-center justify-between">
         <div className="flex items-center gap-2">
           {/* Virality score badge */}
           <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/[0.04] border border-white/[0.08] text-xs font-mono font-medium">
@@ -119,12 +114,12 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
           </div>
 
           <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-mono">
-            <Clock className="w-3 h-3 text-zinc-500" />
+            <Clock className="w-3 h-3 text-zinc-600" />
             <span>{clipDuration}s</span>
           </div>
         </div>
 
-        {/* Media Mode Pill */}
+        {/* Media Switcher Capsule */}
         <div className="flex items-center p-0.5 rounded-lg bg-zinc-900 border border-white/[0.06]">
           <button
             onClick={() => setActiveTab('video')}
@@ -156,8 +151,8 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
         {isRendering ? (
           <div className="flex flex-col items-center gap-2 text-center p-4">
             <Loader2 className="w-7 h-7 text-blue-400 animate-spin" />
-            <p className="text-xs font-medium text-white">Re-rendering clip...</p>
-            <p className="text-[10px] text-zinc-500 font-mono">Applying crop & subtitles</p>
+            <p className="text-xs font-medium text-white">Re-rendering with FFmpeg...</p>
+            <p className="text-[10px] text-zinc-500 font-mono">Applying 9:16 crop & animated subtitles</p>
           </div>
         ) : activeTab === 'video' ? (
           clip.video_path ? (
@@ -183,18 +178,18 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
           )
         )}
 
-        {/* Minimalist Floating Hook Glass Badge */}
+        {/* Hook Glass Capsule */}
         {clip.hook_line && (
           <div className="absolute top-2.5 left-2.5 right-2.5 pointer-events-none">
-            <span className="inline-block bg-black/70 backdrop-blur-md text-amber-300 border border-white/10 text-[10px] font-bold px-2 py-0.5 rounded-md shadow-md tracking-wide uppercase">
-              {clip.hook_line}
+            <span className="inline-block bg-black/75 backdrop-blur-md text-amber-300 border border-white/10 text-[10px] font-bold px-2 py-0.5 rounded-md shadow-md tracking-wide uppercase">
+              HOOK: {clip.hook_line}
             </span>
           </div>
         )}
       </div>
 
       {/* Card Body & Controls */}
-      <div className="p-3.5 flex-1 flex flex-col justify-between gap-3 bg-zinc-950/40">
+      <div className="p-4 flex-1 flex flex-col justify-between gap-3 bg-zinc-950/40">
         <div>
           {/* Virality Reason */}
           {clip.reason && (
@@ -203,7 +198,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
             </p>
           )}
 
-          {/* Editable Title */}
+          {/* Title Editor */}
           <div className="mb-2">
             <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono mb-1">
               <span>TITLE</span>
@@ -217,7 +212,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
                 setTitle(e.target.value);
                 setIsEditing(true);
               }}
-              className="w-full bg-zinc-900/80 border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-white/30 transition-colors font-medium"
+              className="w-full bg-zinc-900/80 border border-white/[0.08] rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-white/30 transition-colors font-medium"
             />
           </div>
 
@@ -227,7 +222,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
               onClick={() => setShowMetadata(!showMetadata)}
               className="flex items-center justify-between w-full text-[10px] font-mono text-zinc-500 hover:text-zinc-300 py-1 transition-colors"
             >
-              <span>CAPTION & TAGS</span>
+              <span>CAPTION & HASHTAGS</span>
               {showMetadata ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             </button>
 
@@ -241,7 +236,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
                     setIsEditing(true);
                   }}
                   placeholder="Shorts caption..."
-                  className="w-full bg-zinc-900 border border-white/[0.06] rounded-lg p-2 text-xs text-zinc-300 focus:outline-none focus:border-white/20 resize-none leading-relaxed"
+                  className="w-full bg-zinc-900 border border-white/[0.06] rounded-xl p-2 text-xs text-zinc-300 focus:outline-none focus:border-white/20 resize-none leading-relaxed"
                 />
 
                 <input
@@ -252,10 +247,21 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
                     setIsEditing(true);
                   }}
                   placeholder="#shorts #viral..."
-                  className="w-full bg-zinc-900 border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs text-blue-400 font-mono focus:outline-none focus:border-white/20"
+                  className="w-full bg-zinc-900 border border-white/[0.06] rounded-xl px-2.5 py-1.5 text-xs text-blue-400 font-mono focus:outline-none focus:border-white/20"
                 />
               </div>
             )}
+          </div>
+
+          {/* Subtitle Palette Swatch bubbles (inspired by designeer detail view) */}
+          <div className="flex items-center justify-between py-1 mb-2">
+            <span className="text-[10px] font-mono text-zinc-500">STYLE SWATCH:</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3.5 h-3.5 rounded-full bg-amber-400 ring-1 ring-white/20 shadow-sm" title="Yellow Bold" />
+              <span className="w-3.5 h-3.5 rounded-full bg-cyan-400 ring-1 ring-white/10" title="Cyan Pop" />
+              <span className="w-3.5 h-3.5 rounded-full bg-emerald-400 ring-1 ring-white/10" title="Emerald High" />
+              <span className="w-3.5 h-3.5 rounded-full bg-rose-400 ring-1 ring-white/10" title="Neon Punch" />
+            </div>
           </div>
 
           {/* Crop Offset Slider */}
@@ -263,7 +269,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
             <div className="flex items-center justify-between text-[11px] mb-1">
               <span className="flex items-center gap-1 text-zinc-400">
                 <Sliders className="w-3 h-3 text-zinc-500" />
-                <span className="text-[10px] font-mono text-zinc-500">CROP OFFSET</span>
+                <span className="text-[10px] font-mono text-zinc-500">HORIZONTAL CROP</span>
               </span>
               <span className="font-mono text-[11px] text-zinc-300">
                 {cropOffset > 0 ? `+${cropOffset}%` : `${cropOffset}%`}
@@ -283,22 +289,21 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
               className="w-full"
             />
             <div className="flex justify-between text-[9px] font-mono text-zinc-600 mt-0.5">
-              <span>L</span>
-              <span>CENTER</span>
-              <span>R</span>
+              <span>LEFT</span>
+              <span>CENTER (0)</span>
+              <span>RIGHT</span>
             </div>
           </div>
         </div>
 
         {/* Footer Actions */}
         <div className="pt-2 border-t border-white/[0.05] space-y-2">
-          {/* Save & Re-render Bar if modified */}
           {isEditing && (
             <div className="flex items-center gap-1.5 animate-fade-in">
               <button
                 onClick={handleSaveChanges}
                 disabled={isSaving}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-white text-zinc-950 hover:bg-zinc-200 rounded-lg text-xs font-semibold shadow-sm transition-all"
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-white text-zinc-950 hover:bg-zinc-200 rounded-xl text-xs font-semibold shadow-sm transition-all"
               >
                 {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                 <span>Save</span>
@@ -307,7 +312,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
               <button
                 onClick={handleRegenerate}
                 disabled={isRendering}
-                className="flex items-center justify-center gap-1 py-1.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-medium border border-white/10 transition-colors"
+                className="flex items-center justify-center gap-1 py-1.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-medium border border-white/10 transition-colors"
                 title="Re-render 9:16 with new crop offset"
               >
                 <RotateCw className={`w-3 h-3 ${isRendering ? 'animate-spin' : ''}`} />
@@ -316,11 +321,11 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
             </div>
           )}
 
-          {/* Workflow Buttons: Approve / Reject / Download */}
+          {/* Workflow Action Pills */}
           <div className="grid grid-cols-3 gap-1.5">
             <button
               onClick={() => handleStatusChange(clip.status === 'approved' ? 'draft' : 'approved')}
-              className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-medium transition-all ${
                 clip.status === 'approved'
                   ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-semibold shadow-sm'
                   : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/[0.06]'
@@ -332,7 +337,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
 
             <button
               onClick={() => handleStatusChange(clip.status === 'rejected' ? 'draft' : 'rejected')}
-              className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-medium transition-all ${
                 clip.status === 'rejected'
                   ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300 font-semibold'
                   : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-white/[0.06]'
@@ -345,8 +350,8 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, onUpdate, onToast }) =
             <a
               href={api.getDownloadUrl(clip.id)}
               download
-              className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/[0.06] transition-colors"
-              title="Download MP4"
+              className="flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/[0.06] transition-colors"
+              title="Download MP4 to disk"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Save</span>

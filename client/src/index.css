@@ -5,15 +5,21 @@
 @layer base {
   :root {
     color-scheme: dark;
+    --canvas-bg: #090a0d;
+    --card-bg: #0e0f14;
+    --card-surface: #13141a;
+    --border-subtle: rgba(255, 255, 255, 0.07);
+    --border-bright: rgba(255, 255, 255, 0.15);
   }
 
   body {
-    @apply antialiased bg-[#07080a] text-zinc-100 selection:bg-brand-500/30 selection:text-white font-sans;
+    @apply antialiased bg-[#090a0d] text-zinc-100 font-sans selection:bg-blue-500/30 selection:text-white;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
-    letter-spacing: -0.011em;
+    letter-spacing: -0.012em;
+    overflow-x: hidden;
   }
 
-  /* Custom sleek scrollbar */
+  /* Custom precision scrollbar */
   ::-webkit-scrollbar {
     width: 5px;
     height: 5px;
@@ -22,50 +28,76 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.1);
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.2);
   }
 }
 
-/* Artisan surface cards */
-.craft-card {
-  background-color: #0d0e12;
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+/* Aurora background diffusion */
+.aurora-glow {
+  position: absolute;
+  top: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 900px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, rgba(139, 92, 246, 0.08) 40%, rgba(244, 63, 94, 0.04) 70%, transparent 100%);
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Designeer Luxury Card Surfaces */
+.bento-card {
+  background: #0d0e13;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 24px;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.craft-card:hover {
-  border-color: rgba(255, 255, 255, 0.14);
+.bento-card:hover {
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
-.craft-card-interactive:hover {
-  border-color: rgba(255, 255, 255, 0.18);
+.bento-card-interactive {
+  background: #0d0e13;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 24px;
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bento-card-interactive:hover {
   transform: translateY(-2px);
-  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
 }
 
-/* Glassmorphism surfaces */
-.craft-glass {
-  background: rgba(13, 14, 18, 0.75);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+/* Frosted glass capsules */
+.glass-pill {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Capsule navigation pills */
-.nav-pill {
-  @apply relative px-3.5 py-1.5 rounded-full text-xs font-medium transition-all duration-200 text-zinc-400 hover:text-zinc-200;
+.glass-pill:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
 }
 
-.nav-pill.active {
-  @apply bg-white/10 text-white shadow-inner-light;
+/* Traffic light dots */
+.traffic-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
 }
 
-/* Sleek custom slider */
+/* Custom sleek slider */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -78,7 +110,7 @@ input[type="range"]:focus {
 }
 
 input[type="range"]::-webkit-slider-runnable-track {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
   height: 4px;
   border-radius: 9999px;
 }
@@ -91,27 +123,26 @@ input[type="range"]::-webkit-slider-thumb {
   height: 16px;
   width: 16px;
   border-radius: 9999px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
   transition: transform 0.15s ease, background-color 0.15s ease;
 }
 
 input[type="range"]::-webkit-slider-thumb:hover {
-  transform: scale(1.15);
+  transform: scale(1.2);
   background-color: #3b82f6;
 }
 
-input[type="range"]::-moz-range-track {
-  background: rgba(255, 255, 255, 0.1);
-  height: 4px;
-  border-radius: 9999px;
+/* Custom keyframes */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-input[type="range"]::-moz-range-thumb {
-  background-color: #ffffff;
-  height: 16px;
-  width: 16px;
-  border: none;
-  border-radius: 9999px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
-  transition: transform 0.15s ease;
+.shimmer-text {
+  background: linear-gradient(90deg, #ffffff 0%, #93c5fd 50%, #ffffff 100%);
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmer 4s ease-in-out infinite;
 }
