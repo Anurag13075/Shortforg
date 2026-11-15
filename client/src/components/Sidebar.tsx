@@ -201,7 +201,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <HardDrive className="w-3.5 h-3.5 text-zinc-600" />
             <span>Groq Engine:</span>
           </div>
-          <span className="text-zinc-300">Whisper + 70B</span>
+          <span className="text-zinc-300">Whisper + 120B OSS</span>
         </div>
       </div>
     </aside>

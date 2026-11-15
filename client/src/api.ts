@@ -32,6 +32,9 @@ export const api = {
   deleteProject: (id: string) => request<{ success: boolean; message: string }>(`/api/projects/${id}`, {
     method: 'DELETE'
   }),
+  retryProject: (id: string) => request<Project>(`/api/projects/${id}/retry`, {
+    method: 'POST'
+  }),
 
   // Clips
   updateClip: (id: string, updates: Partial<Pick<Clip, 'title' | 'caption' | 'hashtags' | 'status' | 'crop_offset_x'>>) =>

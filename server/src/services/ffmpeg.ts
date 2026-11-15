@@ -28,15 +28,14 @@ export class FFmpegService {
    */
   static async extractAudio(videoPath: string, outputPath: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      // Extract audio at 128k mono/stereo mp3, fast and compatible with Groq API
+      // Extract audio at 128k mono, 16kHz speech recognition format
       const args = [
         '-y',
         '-i', videoPath,
         '-vn',
-        '-acodec', 'libmp3lame',
         '-b:a', '128k',
-        '-ar', '16000', // 16kHz optimal for speech recognition
-        '-ac', '1',     // mono reduces payload size dramatically
+        '-ar', '16000',
+        '-ac', '1',
         outputPath
       ];
 
@@ -102,54 +101,61 @@ export class FFmpegService {
   }
 
   /**
-   * Escape file paths for use in FFmpeg filter strings (especially on Windows)
+   * Escape file paths for use in FFmpeg filter strings
    */
   private static escapeFilterPath(filePath: string): string {
-    // Standardize to forward slashes
     let normalized = filePath.replace(/\\/g, '/');
-    // On Windows, paths like C:/path must escape the colon as C\:/path
     normalized = normalized.replace(/^([a-zA-Z]):/, '$1\\:');
-    // Escape single quotes if any
     normalized = normalized.replace(/'/g, "\\'");
     return `'${normalized}'`;
   }
 
   /**
-   * Render a 9:16 vertical clip with:
-   * 1. Sub-clip cutting (startTime to endTime)
-   * 2. 9:16 Vertical Crop (1080x1920) with horizontal offset adjustment
-   * 3. Audio normalization (loudnorm)
-   * 4. Burned-in ASS subtitles (animated highlight)
-   * 5. H.264 MP4 export
+   * Render a 9:16 vertical clip with subtitle fallback
    */
   static async renderClip(params: {
     sourceVideoPath: string;
     startTime: number;
     endTime: number;
-    cropOffsetXPercent: number; // -100 to 100 percentage from center
+    cropOffsetXPercent: number;
     assSubtitlePath?: string;
     outputPath: string;
     onProgress?: (percent: number) => void;
   }): Promise<string> {
+    try {
+      // First attempt with animated subtitles
+      return await this.executeRender(params, Boolean(params.assSubtitlePath));
+    } catch (err: any) {
+      if (params.assSubtitlePath) {
+        console.warn('Subtitles filter failed (font/libass error), falling back to clean 9:16 video cut:', err.message);
+        // Fallback: render without subtitles filter
+        return await this.executeRender(params, false);
+      }
+      throw err;
+    }
+  }
+
+  private static async executeRender(
+    params: {
+      sourceVideoPath: string;
+      startTime: number;
+      endTime: number;
+      cropOffsetXPercent: number;
+      assSubtitlePath?: string;
+      outputPath: string;
+      onProgress?: (percent: number) => void;
+    },
+    includeSubtitles: boolean
+  ): Promise<string> {
     const { sourceVideoPath, startTime, endTime, cropOffsetXPercent, assSubtitlePath, outputPath } = params;
     const duration = endTime - startTime;
 
-    // Calculate crop filter:
-    // To make a 9:16 aspect ratio:
-    // Crop width = in_h * (9/16)
-    // Offset X = (in_w - out_w) / 2 + (cropOffsetXPercent / 100) * ((in_w - out_w) / 2)
-    // Clipped so it never exceeds boundaries: min(max(0, X), in_w - out_w)
     const offsetFactor = Math.max(-1, Math.min(1, cropOffsetXPercent / 100));
-
-    // FFmpeg filter chain:
-    // 1. Crop to 9:16
-    // 2. Scale to 1080:1920
-    // 3. Burn in ASS subtitles (if provided)
     const cropExpr = `crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':'min(max(0,(iw-ow)/2+${offsetFactor}*(iw-ow)/2),iw-ow)':'(ih-oh)/2'`;
     const scaleExpr = `scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black`;
 
     let vfFilters = `${cropExpr},${scaleExpr}`;
-    if (assSubtitlePath && fs.existsSync(assSubtitlePath)) {
+    if (includeSubtitles && assSubtitlePath && fs.existsSync(assSubtitlePath)) {
       const escapedAssPath = this.escapeFilterPath(assSubtitlePath);
       vfFilters += `,subtitles=${escapedAssPath}`;
     }
@@ -177,7 +183,6 @@ export class FFmpegService {
       child.stderr.on('data', (chunk) => {
         const text = chunk.toString();
         stderr += text;
-        // Parse time progression if requested
         if (params.onProgress) {
           const match = text.match(/time=(\d+):(\d+):(\d+\.\d+)/);
           if (match) {
@@ -205,25 +210,23 @@ export class FFmpegService {
   }
 
   /**
-   * Generate high-contrast 9:16 thumbnail with hook text overlay
+   * Generate 9:16 thumbnail with hook text overlay
    */
   static async generateThumbnail(params: {
     sourceVideoPath: string;
-    captureTime: number; // timestamp in seconds
+    captureTime: number;
     hookText: string;
     cropOffsetXPercent: number;
     outputPath: string;
   }): Promise<string> {
     const { sourceVideoPath, captureTime, hookText, cropOffsetXPercent, outputPath } = params;
 
-    // Create a temporary ASS subtitle file specifically for the thumbnail hook title
     const tempAssPath = outputPath + '.thumb.ass';
     const cleanHook = (hookText || 'WATCH THIS')
       .replace(/[\r\n]+/g, ' ')
       .trim()
       .toUpperCase();
 
-    // Word wrap hook text into 2-3 short impactful lines
     const words = cleanHook.split(/\s+/);
     const lines: string[] = [];
     let currentLine = '';
@@ -246,7 +249,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Hook,Montserrat,82,&H0000FFFF,&H00000000,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,8,4,5,60,60,400,1
+Style: Hook,DejaVu Sans,82,&H0000FFFF,&H00000000,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,8,4,5,60,60,400,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -258,13 +261,26 @@ Dialogue: 0,0:00:00.00,0:00:10.00,Hook,,0,0,0,,{\\an5\\b1\\c&H00F0FF&\\3c&H00000
     const offsetFactor = Math.max(-1, Math.min(1, cropOffsetXPercent / 100));
     const cropExpr = `crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':'min(max(0,(iw-ow)/2+${offsetFactor}*(iw-ow)/2),iw-ow)':'(ih-oh)/2'`;
     const scaleExpr = `scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black`;
-    const escapedAssPath = this.escapeFilterPath(tempAssPath);
 
+    // Attempt with subtitles; fallback to clean frame if subtitle filter fails
+    try {
+      const escapedAssPath = this.escapeFilterPath(tempAssPath);
+      await this.runThumbnailFfmpeg(`${cropExpr},${scaleExpr},subtitles=${escapedAssPath}`, sourceVideoPath, captureTime, outputPath);
+    } catch {
+      await this.runThumbnailFfmpeg(`${cropExpr},${scaleExpr}`, sourceVideoPath, captureTime, outputPath);
+    } finally {
+      try { fs.unlinkSync(tempAssPath); } catch {}
+    }
+
+    return outputPath;
+  }
+
+  private static runThumbnailFfmpeg(vfFilters: string, videoPath: string, captureTime: number, outputPath: string): Promise<string> {
     const args = [
       '-y',
       '-ss', captureTime.toFixed(3),
-      '-i', sourceVideoPath,
-      '-vf', `${cropExpr},${scaleExpr},subtitles=${escapedAssPath}`,
+      '-i', videoPath,
+      '-vf', vfFilters,
       '-vframes', '1',
       '-q:v', '2',
       outputPath
@@ -273,25 +289,15 @@ Dialogue: 0,0:00:00.00,0:00:10.00,Hook,,0,0,0,,{\\an5\\b1\\c&H00F0FF&\\3c&H00000
     return new Promise((resolve, reject) => {
       const child = spawn('ffmpeg', args);
       let stderr = '';
-
       child.stderr.on('data', (d) => { stderr += d.toString(); });
-
       child.on('close', (code) => {
-        // Clean up temp ASS file
-        try { fs.unlinkSync(tempAssPath); } catch {}
-
         if (code === 0 && fs.existsSync(outputPath)) {
           resolve(outputPath);
         } else {
-          reject(new Error(`Failed to generate thumbnail (${code}): ${stderr.slice(-300)}`));
+          reject(new Error(`Thumbnail failed (${code}): ${stderr.slice(-200)}`));
         }
       });
-
-      child.on('error', (err) => {
-        try { fs.unlinkSync(tempAssPath); } catch {}
-        reject(err);
-      });
+      child.on('error', (err) => reject(err));
     });
   }
 }
-

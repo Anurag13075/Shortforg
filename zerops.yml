@@ -20,8 +20,8 @@ zerops:
     run:
       base: nodejs@22
       prepareCommands:
-        # Install FFmpeg with sudo for runtime video processing
-        - sudo apk add --no-cache ffmpeg || apk add --no-cache ffmpeg
+        # Install FFmpeg and font libraries for subtitle rendering
+        - sudo apk add --no-cache ffmpeg ttf-dejavu fontconfig || apk add --no-cache ffmpeg ttf-dejavu fontconfig
       start: node server/dist/index.js
       ports:
         - port: 3001

@@ -135,6 +135,36 @@ projectsRouter.get('/:id/progress', (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/projects/:id/retry - Retry pipeline execution for a failed project
+ */
+projectsRouter.post('/:id/retry', (req: Request, res: Response) => {
+  const projectId = String(req.params.id);
+  try {
+    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId) as ProjectRecord | undefined;
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' });
+    }
+
+    db.prepare(`
+      UPDATE projects
+      SET status = 'pending', progress = 0, stage_message = 'Retrying pipeline...', error_message = NULL, updated_at = ?
+      WHERE id = ?
+    `).run(new Date().toISOString(), projectId);
+
+    setImmediate(() => {
+      PipelineService.runProjectPipeline(projectId).catch((err) => {
+        console.error(`Retry pipeline execution failed for ${projectId}:`, err);
+      });
+    });
+
+    const updated = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId) as ProjectRecord;
+    res.json({ success: true, data: updated });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * DELETE /api/projects/:id - Delete project and its files
  */
 projectsRouter.delete('/:id', (req: Request, res: Response) => {

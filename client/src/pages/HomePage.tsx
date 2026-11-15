@@ -119,6 +119,18 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
     }
   };
 
+  const handleRetry = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await api.retryProject(id);
+      setActiveJobId(id);
+      onToast('Retrying pipeline...', 'info');
+      await fetchProjects();
+    } catch (err: any) {
+      onToast(`Failed to retry: ${err.message}`, 'error');
+    }
+  };
+
   const activeProject = projects.find(
     (p) =>
       p.id === activeJobId &&
@@ -161,7 +173,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
 
         {/* Display Headline */}
         <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-[-0.035em] text-white max-w-3xl mx-auto leading-[1.08]">
-          React Design System for{' '}
+          Automate your <span className="text-blue-400">YouTube Shorts</span> workflow with AI-powered  
           <span className="bg-clip-text text-transparent bg-gradient-to-r from-white via-zinc-200 to-zinc-400">
             Viral Shorts
           </span>
@@ -357,6 +369,22 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
                     <h3 className="text-sm font-semibold text-white group-hover:text-blue-400 transition-colors line-clamp-2 leading-snug">
                       {proj.title || proj.youtube_url}
                     </h3>
+
+                    {/* Error Banner if Failed */}
+                    {isFailed && proj.error_message && (
+                      <div className="mt-2 space-y-2">
+                        <p className="text-[11px] font-mono text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl p-2.5 leading-relaxed">
+                          ⚠️ {proj.error_message}
+                        </p>
+                        <button
+                          onClick={(e) => handleRetry(proj.id, e)}
+                          className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 border border-blue-500/30 rounded-xl text-xs font-medium transition-all"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Retry Pipeline</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Metadata and Actions */}
@@ -367,6 +395,15 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
                     </div>
 
                     <div className="flex items-center gap-1">
+                      {isFailed && (
+                        <button
+                          onClick={(e) => handleRetry(proj.id, e)}
+                          className="p-1.5 text-blue-400 hover:text-blue-300 rounded-lg hover:bg-blue-500/10 transition-colors"
+                          title="Retry pipeline"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <button
                         onClick={(e) => handleDelete(proj.id, e)}
                         className="p-1.5 text-zinc-600 hover:text-rose-400 rounded-lg hover:bg-white/[0.04] transition-colors"

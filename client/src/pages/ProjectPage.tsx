@@ -30,6 +30,20 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
   const [clips, setClips] = useState<Clip[]>([]);
   const [filter, setFilter] = useState<'all' | 'approved' | 'draft' | 'rejected'>('all');
   const [isLoading, setIsLoading] = useState(true);
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    try {
+      await api.retryProject(projectId);
+      onToast('Retrying pipeline...', 'info');
+      await fetchProjectDetails();
+    } catch (err: any) {
+      onToast(`Failed to retry: ${err.message}`, 'error');
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   const fetchProjectDetails = async () => {
     try {
@@ -177,14 +191,28 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
         </div>
       </div>
 
-      {/* Live Pipeline Progress banner if active */}
-      {isStillProcessing && (
-        <ProgressBar
-          status={project.status}
-          progress={project.progress}
-          stageMessage={project.stage_message}
-          errorMessage={project.error_message}
-        />
+      {/* Live Pipeline Progress or Error Banner */}
+      {(isStillProcessing || project.status === 'failed') && (
+        <div className="space-y-3">
+          <ProgressBar
+            status={project.status}
+            progress={project.progress}
+            stageMessage={project.stage_message}
+            errorMessage={project.error_message}
+          />
+          {project.status === 'failed' && (
+            <div className="flex items-center justify-end">
+              <button
+                onClick={handleRetry}
+                disabled={isRetrying}
+                className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full text-xs font-semibold shadow-lg shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
+                <span>{isRetrying ? 'Retrying...' : 'Retry Pipeline Now'}</span>
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Designeer-style Filter Pills */}

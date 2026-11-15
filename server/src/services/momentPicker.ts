@@ -76,15 +76,38 @@ Analyze this timestamped transcript and select ${targetCount} top viral standalo
 
 ${timestampedChunks.join('\n\n')}`;
 
-  const completion = await groq.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.3
-  });
+  const candidateModels = [
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'qwen/qwen3.8-27b'
+  ];
+
+  let completion: any;
+  let lastError: any;
+
+  for (const model of candidateModels) {
+    try {
+      completion = await groq.chat.completions.create({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3
+      });
+      if (completion?.choices?.[0]?.message?.content) {
+        break;
+      }
+    } catch (err: any) {
+      console.warn(`Groq model ${model} failed, trying next fallback:`, err.message);
+      lastError = err;
+    }
+  }
+
+  if (!completion?.choices?.[0]?.message?.content) {
+    throw new Error(`All Groq LLM models failed to pick viral moments: ${lastError?.message || 'No response'}`);
+  }
 
   const responseContent = completion.choices[0]?.message?.content || '{}';
   let parsed: any;
