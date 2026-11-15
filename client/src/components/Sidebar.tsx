@@ -8,7 +8,8 @@ import {
   Settings,
   HardDrive,
   Cpu,
-  Plus
+  Plus,
+  Download
 } from 'lucide-react';
 import { HealthInfo, Channel } from '../types';
 
@@ -194,6 +195,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             {health?.ffmpeg.available ? 'Native Ready' : 'Missing'}
           </span>
+        </div>
+
+        <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500 px-1">
+          <div className="flex items-center gap-1.5">
+            <Download className="w-3.5 h-3.5 text-zinc-600" />
+            <span>Downloader:</span>
+          </div>
+          <span className="text-emerald-400 font-semibold">Self-Hosted</span>
         </div>
 
         <div className="flex items-center justify-between text-[10px] font-mono text-zinc-500 px-1">
