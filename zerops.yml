@@ -22,9 +22,6 @@ zerops:
       prepareCommands:
         # Install FFmpeg with sudo for runtime video processing
         - sudo apk add --no-cache ffmpeg || apk add --no-cache ffmpeg
-      initCommands:
-        # Ensure persistent storage directories exist
-        - mkdir -p /var/storage /var/data
       start: node server/dist/index.js
       ports:
         - port: 3001
@@ -32,6 +29,3 @@ zerops:
       envVariables:
         NODE_ENV: production
         PORT: 3001
-        STORAGE_DIR: /var/storage
-        DATA_DIR: /var/data
-        DB_PATH: /var/data/shortsforge.db
