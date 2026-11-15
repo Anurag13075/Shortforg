@@ -19,22 +19,22 @@ if (fs.existsSync(rootEnvPath)) {
 }
 
 export const CONFIG = {
-  PORT: parseInt(process.env.PORT || '3001', 10),
-  APP_URL: (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, ''),
-  VIDKRAKEN_API_KEY: process.env.VIDKRAKEN_API_KEY || '',
-  GROQ_API_KEY: process.env.GROQ_API_KEY || '',
-  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
-  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
+  PORT: parseInt((process.env.PORT || '3001').trim(), 10),
+  APP_URL: (process.env.APP_URL || 'http://localhost:5173').trim().replace(/\/$/, ''),
+  VIDKRAKEN_API_KEY: (process.env.VIDKRAKEN_API_KEY || '').trim(),
+  GROQ_API_KEY: (process.env.GROQ_API_KEY || '').trim(),
+  GOOGLE_CLIENT_ID: (process.env.GOOGLE_CLIENT_ID || '').trim(),
+  GOOGLE_CLIENT_SECRET: (process.env.GOOGLE_CLIENT_SECRET || '').trim(),
 
   // Storage and directories
-  STORAGE_DIR: process.env.STORAGE_DIR || path.resolve(__dirname, '../storage'),
-  DATA_DIR: process.env.DATA_DIR || path.resolve(__dirname, '../data'),
-  DB_PATH: process.env.DB_PATH || path.resolve(__dirname, '../data/shortsforge.db'),
+  STORAGE_DIR: (process.env.STORAGE_DIR || path.resolve(__dirname, '../storage')).trim(),
+  DATA_DIR: (process.env.DATA_DIR || path.resolve(__dirname, '../data')).trim(),
+  DB_PATH: (process.env.DB_PATH || path.resolve(__dirname, '../data/shortsforge.db')).trim(),
 
   // YouTube OAuth redirect URL
   get GOOGLE_REDIRECT_URI() {
     if (process.env.GOOGLE_REDIRECT_URI) {
-      return process.env.GOOGLE_REDIRECT_URI;
+      return process.env.GOOGLE_REDIRECT_URI.trim();
     }
     // Default to port on localhost or APP_URL in production
     if (this.APP_URL.includes('localhost') || this.APP_URL.includes('127.0.0.1')) {

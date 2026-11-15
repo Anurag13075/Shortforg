@@ -13,9 +13,9 @@ export class YouTubeService {
     }
 
     return new google.auth.OAuth2(
-      CONFIG.GOOGLE_CLIENT_ID,
-      CONFIG.GOOGLE_CLIENT_SECRET,
-      CONFIG.GOOGLE_REDIRECT_URI
+      CONFIG.GOOGLE_CLIENT_ID.trim(),
+      CONFIG.GOOGLE_CLIENT_SECRET.trim(),
+      CONFIG.GOOGLE_REDIRECT_URI.trim()
     );
   }
 
