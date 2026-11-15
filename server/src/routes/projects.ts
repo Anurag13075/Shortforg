@@ -36,11 +36,12 @@ projectsRouter.post('/', (req: Request, res: Response) => {
     return res.status(400).json({ success: false, error: 'youtubeUrl is required' });
   }
 
-  // Basic YouTube URL verification
+  // Verify YouTube or direct video URL
   const cleanUrl = youtubeUrl.trim();
   const isYouTube = /(?:youtube\.com\/(?:watch\?v=|shorts\/|live\/)|youtu\.be\/)/i.test(cleanUrl);
-  if (!isYouTube) {
-    return res.status(400).json({ success: false, error: 'Please enter a valid YouTube video URL' });
+  const isDirectVideo = /\.(mp4|mov|webm)(\?.*)?$/i.test(cleanUrl) || /^https?:\/\/.*(storage|download|video|media).*/i.test(cleanUrl);
+  if (!isYouTube && !isDirectVideo) {
+    return res.status(400).json({ success: false, error: 'Please enter a valid YouTube video URL or direct video link' });
   }
 
   const projectId = uuidv4();

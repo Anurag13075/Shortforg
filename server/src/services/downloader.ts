@@ -77,6 +77,35 @@ export async function downloadYouTubeVideo(
   outputDir: string,
   onProgress?: (progressPercent: number, message: string) => void
 ): Promise<DownloadResult> {
+  // If the user provided a direct video link, download directly without third-party API
+  const isDirectVideo = /\.(mp4|mov|webm)(\?.*)?$/i.test(youtubeUrl) || !/(?:youtube\.com|youtu\.be)/i.test(youtubeUrl);
+  if (isDirectVideo) {
+    onProgress?.(15, 'Downloading video directly from URL...');
+    const fileName = `source_${Date.now()}_video.mp4`;
+    const filePath = path.join(outputDir, fileName);
+
+    const writer = fs.createWriteStream(filePath);
+    const response = await axios({
+      method: 'GET',
+      url: youtubeUrl,
+      responseType: 'stream',
+      timeout: 300000
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      response.data.pipe(writer);
+      writer.on('finish', () => resolve());
+      writer.on('error', (err) => reject(err));
+    });
+
+    onProgress?.(60, 'Direct video downloaded successfully!');
+    return {
+      filePath,
+      title: 'Direct Video Clip',
+      duration: 0 // Probed by FFmpeg
+    };
+  }
+
   const apiKey = CONFIG.VIDKRAKEN_API_KEY;
 
   if (apiKey) {
