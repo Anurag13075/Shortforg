@@ -71,7 +71,8 @@ projectsRouter.post('/', (req: Request, res: Response) => {
  */
 projectsRouter.get('/:id', (req: Request, res: Response) => {
   try {
-    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id) as ProjectRecord | undefined;
+    const projectId = String(req.params.id);
+    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId) as ProjectRecord | undefined;
     if (!project) {
       return res.status(404).json({ success: false, error: 'Project not found' });
     }
@@ -80,7 +81,7 @@ projectsRouter.get('/:id', (req: Request, res: Response) => {
       SELECT * FROM clips
       WHERE project_id = ?
       ORDER BY virality_score DESC, start_time ASC
-    `).all(req.params.id) as ClipRecord[];
+    `).all(projectId) as ClipRecord[];
 
     res.json({
       success: true,
@@ -98,7 +99,7 @@ projectsRouter.get('/:id', (req: Request, res: Response) => {
  * GET /api/projects/:id/progress - Server-Sent Events (SSE) for live pipeline progress
  */
 projectsRouter.get('/:id/progress', (req: Request, res: Response) => {
-  const projectId = req.params.id;
+  const projectId = String(req.params.id);
 
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId) as ProjectRecord | undefined;
   if (!project) {
@@ -137,7 +138,7 @@ projectsRouter.get('/:id/progress', (req: Request, res: Response) => {
  * DELETE /api/projects/:id - Delete project and its files
  */
 projectsRouter.delete('/:id', (req: Request, res: Response) => {
-  const projectId = req.params.id;
+  const projectId = String(req.params.id);
   try {
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId) as ProjectRecord | undefined;
     if (!project) {

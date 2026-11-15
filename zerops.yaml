@@ -9,9 +9,7 @@ zerops:
         # Build server (TypeScript -> server/dist)
         - cd server && npm install && npm run build
         # Build client (Vite -> client/dist)
-        - cd ../client && npm install && npm run build
-        # Return to repository root for deployFiles
-        - cd ..
+        - cd client && npm install && npm run build
       deployFiles:
         - server/dist
         - server/package.json

@@ -56,7 +56,7 @@ clipsRouter.patch('/:id', (req: Request, res: Response) => {
  * POST /api/clips/:id/render - Trigger re-render of clip after editing crop offset or hook
  */
 clipsRouter.post('/:id/render', async (req: Request, res: Response) => {
-  const clipId = req.params.id;
+  const clipId = String(req.params.id);
   const { crop_offset_x } = req.body;
 
   try {
@@ -81,7 +81,7 @@ clipsRouter.get('/:id/video', (req: Request, res: Response) => {
     const videoPath = clip.video_path;
     const stat = fs.statSync(videoPath);
     const fileSize = stat.size;
-    const range = req.headers.range;
+    const range = typeof req.headers.range === 'string' ? req.headers.range : undefined;
 
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');

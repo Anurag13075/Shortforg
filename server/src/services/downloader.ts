@@ -119,7 +119,8 @@ export async function downloadYouTubeVideo(
     timeout: 300000 // 5 minutes stream timeout
   });
 
-  const totalLength = parseInt(response.headers['content-length'] || '0', 10);
+  const contentLength = response.headers['content-length'];
+  const totalLength = parseInt(typeof contentLength === 'string' ? contentLength : '0', 10);
   let downloadedBytes = 0;
 
   response.data.on('data', (chunk: Buffer) => {

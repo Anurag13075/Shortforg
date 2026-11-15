@@ -190,7 +190,7 @@ export class YouTubeService {
 
     // 1. Upload Video
     const videoFileSize = fs.statSync(videoPath).size;
-    const res = await youtube.videos.insert(
+    const res: any = await (youtube.videos.insert as any)(
       {
         part: ['snippet', 'status'],
         requestBody: {
