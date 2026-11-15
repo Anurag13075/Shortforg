@@ -24,25 +24,37 @@ export async function downloadYouTubeVideo(
     throw new Error('VIDKRAKEN_API_KEY is not configured in .env');
   }
 
-  onProgress?.(5, 'Submitting download request to Vid Kraken...');
+  onProgress?.(5, 'Submitting download request to Vid Kraken (1080p/720p video)...');
 
-  // Step 1: POST https://vidkraken.com/api/v2/download
-  let createRes;
-  try {
-    createRes = await axios.post(
-      'https://vidkraken.com/api/v2/download',
-      { url: youtubeUrl },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000
+  // Step 1: POST https://vidkraken.com/api/v2/download with video format (1080 -> 720 -> 480 -> 360)
+  const videoFormats = ['1080', '720', '480', '360'];
+  let createRes: any = null;
+  let lastErrorMsg = '';
+
+  for (const fmt of videoFormats) {
+    try {
+      createRes = await axios.post(
+        'https://vidkraken.com/api/v2/download',
+        { url: youtubeUrl, format: fmt },
+        {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000
+        }
+      );
+      if (createRes.data?.jobId || createRes.data?.id || createRes.data?.data?.jobId) {
+        break;
       }
-    );
-  } catch (err: any) {
-    const msg = err.response?.data?.message || err.message;
-    throw new Error(`Vid Kraken download init failed: ${msg}`);
+    } catch (err: any) {
+      lastErrorMsg = err.response?.data?.message || err.message;
+      console.warn(`VidKraken format ${fmt} request failed (${lastErrorMsg}), attempting lower resolution...`);
+    }
+  }
+
+  if (!createRes) {
+    throw new Error(`Vid Kraken video download init failed: ${lastErrorMsg}`);
   }
 
   const jobId = createRes.data?.jobId || createRes.data?.id || createRes.data?.data?.jobId;

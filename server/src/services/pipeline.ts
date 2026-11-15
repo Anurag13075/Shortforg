@@ -150,6 +150,11 @@ export class PipelineService {
       // ----------------------------------------------------------------------
       this.notifyProgress(projectId, 'rendering', 60, `Rendering ${viralMoments.length} vertical 9:16 Shorts with animated captions...`);
 
+      // Clear any prior clips for this project if re-running
+      try {
+        db.prepare('DELETE FROM clips WHERE project_id = ?').run(projectId);
+      } catch {}
+
       const totalMoments = viralMoments.length;
       for (let i = 0; i < totalMoments; i++) {
         const moment = viralMoments[i];
