@@ -7,7 +7,15 @@ import { downloadYouTubeVideo } from './downloader.js';
 import { FFmpegService } from './ffmpeg.js';
 import { transcribeAudio } from './transcriber.js';
 import { pickViralMoments, ViralMoment } from './momentPicker.js';
-import { generateAssSubtitles } from './subtitleGenerator.js';
+import { generateAssSubtitles, CaptionPreset } from './subtitleGenerator.js';
+
+export interface ReRenderOptions {
+  cropOffsetX?: number;
+  captionPreset?: CaptionPreset;
+  captionActiveColor?: string;
+  captionBaseColor?: string;
+  wordsPerBurst?: number;
+}
 
 // In-memory event listeners for Server-Sent Events (SSE) live progress per project
 type ProgressListener = (data: {
@@ -168,13 +176,20 @@ export class PipelineService {
           `Rendering Short #${i + 1}/${totalMoments}: "${moment.title}"...`
         );
 
-        // 1. Generate ASS animated subtitles for this segment
+        // 1. Generate ASS animated subtitles for this segment (Videocaptions.ai style kinetic pop)
         const assPath = path.join(projectDir, `clip_${i + 1}_subtitles.ass`);
         generateAssSubtitles(
           transcription.words,
           moment.start,
           moment.end,
-          assPath
+          assPath,
+          {
+            preset: 'hormozi_gold',
+            activeColorHex: '#FFE600',
+            baseColorHex: '#FFFFFF',
+            wordsPerChunk: 2,
+            animation: 'bounce'
+          }
         );
 
         // 2. Render 9:16 cropped clip with FFmpeg
@@ -208,8 +223,9 @@ export class PipelineService {
         db.prepare(`
           INSERT INTO clips (
             id, project_id, title, caption, hashtags, hook_line, virality_score, reason,
-            start_time, end_time, crop_offset_x, video_path, thumbnail_path, status, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+            start_time, end_time, crop_offset_x, caption_preset, caption_active_color, caption_base_color, words_per_burst,
+            video_path, thumbnail_path, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
         `).run(
           clipId,
           projectId,
@@ -222,6 +238,10 @@ export class PipelineService {
           moment.start,
           moment.end,
           0,
+          'hormozi_gold',
+          '#FFE600',
+          '#FFFFFF',
+          2,
           videoOutputPath,
           fs.existsSync(thumbOutputPath) ? thumbOutputPath : null,
           now,
@@ -251,9 +271,12 @@ export class PipelineService {
   }
 
   /**
-   * Re-render a single clip when user updates crop offset or triggers regeneration
+   * Re-render a single clip when user updates crop offset or caption colors/presets
    */
-  static async reRenderClip(clipId: string, newCropOffsetX?: number): Promise<ClipRecord> {
+  static async reRenderClip(
+    clipId: string,
+    options?: number | ReRenderOptions
+  ): Promise<ClipRecord> {
     const clip = db.prepare('SELECT * FROM clips WHERE id = ?').get(clipId) as ClipRecord | undefined;
     if (!clip) throw new Error(`Clip ${clipId} not found`);
 
@@ -262,7 +285,13 @@ export class PipelineService {
       throw new Error('Original source video is missing');
     }
 
-    const cropOffsetX = (newCropOffsetX !== undefined) ? newCropOffsetX : clip.crop_offset_x;
+    const opts: ReRenderOptions = typeof options === 'number' ? { cropOffsetX: options } : (options || {});
+    const cropOffsetX = opts.cropOffsetX !== undefined ? opts.cropOffsetX : (clip.crop_offset_x ?? 0);
+    const captionPreset = opts.captionPreset || (clip.caption_preset as CaptionPreset) || 'hormozi_gold';
+    const captionActiveColor = opts.captionActiveColor || clip.caption_active_color || '#FFE600';
+    const captionBaseColor = opts.captionBaseColor || clip.caption_base_color || '#FFFFFF';
+    const wordsPerBurst = opts.wordsPerBurst || clip.words_per_burst || 2;
+
     const projectDir = path.dirname(clip.video_path || path.join(CONFIG.STORAGE_DIR, clip.project_id, 'file.mp4'));
 
     // Update status to rendering
@@ -279,9 +308,17 @@ export class PipelineService {
           const transData = JSON.parse(fs.readFileSync(transcriptPath, 'utf-8'));
           if (Array.isArray(transData.words)) {
             assPath = path.join(projectDir, `clip_rerender_${clipId.substring(0, 6)}.ass`);
-            generateAssSubtitles(transData.words, clip.start_time, clip.end_time, assPath);
+            generateAssSubtitles(transData.words, clip.start_time, clip.end_time, assPath, {
+              preset: captionPreset,
+              activeColorHex: captionActiveColor,
+              baseColorHex: captionBaseColor,
+              wordsPerChunk: wordsPerBurst,
+              animation: 'bounce'
+            });
           }
-        } catch {}
+        } catch (err: any) {
+          console.warn('Subtitle re-generation warning:', err.message);
+        }
       }
 
       // Output new video file
@@ -318,9 +355,21 @@ export class PipelineService {
       const now = new Date().toISOString();
       db.prepare(`
         UPDATE clips
-        SET video_path = ?, thumbnail_path = ?, status = 'draft', crop_offset_x = ?, updated_at = ?
+        SET video_path = ?, thumbnail_path = ?, status = 'draft', crop_offset_x = ?,
+            caption_preset = ?, caption_active_color = ?, caption_base_color = ?, words_per_burst = ?,
+            updated_at = ?
         WHERE id = ?
-      `).run(newVideoPath, fs.existsSync(newThumbPath) ? newThumbPath : clip.thumbnail_path, cropOffsetX, now, clipId);
+      `).run(
+        newVideoPath,
+        fs.existsSync(newThumbPath) ? newThumbPath : clip.thumbnail_path,
+        cropOffsetX,
+        captionPreset,
+        captionActiveColor,
+        captionBaseColor,
+        wordsPerBurst,
+        now,
+        clipId
+      );
 
       return db.prepare('SELECT * FROM clips WHERE id = ?').get(clipId) as ClipRecord;
     } catch (err: any) {

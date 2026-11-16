@@ -20,8 +20,9 @@ zerops:
     run:
       base: nodejs@22
       prepareCommands:
-        # Install FFmpeg, fonts, python3, and yt-dlp with standalone binary fallback
-        - sudo apk add --no-cache ffmpeg ttf-dejavu fontconfig python3 yt-dlp || apk add --no-cache ffmpeg ttf-dejavu fontconfig python3 yt-dlp || (curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod a+rx /usr/local/bin/yt-dlp)
+        # Install FFmpeg, fonts, python3, and latest official yt-dlp binary
+        - apk add --no-cache ffmpeg ttf-dejavu fontconfig python3 curl ca-certificates || true
+        - curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod a+rx /usr/local/bin/yt-dlp || true
       start: node server/dist/index.js
       ports:
         - port: 3001

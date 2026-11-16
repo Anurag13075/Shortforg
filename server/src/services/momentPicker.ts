@@ -14,7 +14,9 @@ export interface ViralMoment {
 }
 
 /**
- * Analyzes video transcript with a Groq LLM to identify 5-10 viral, standalone Shorts clips
+ * Uses Groq LLMs to analyze transcript timestamps and select the highest-retention,
+ * hyper-specific viral moments for 9:16 vertical YouTube Shorts.
+ * Every title, hook, and caption is strictly grounded in the exact dialogue of the clip.
  */
 export async function pickViralMoments(
   fullText: string,
@@ -30,7 +32,6 @@ export async function pickViralMoments(
   const groq = new Groq({ apiKey });
 
   // Format transcript segments with timestamps to guide the LLM
-  // Group words by ~10-second intervals so the prompt isn't overwhelmed
   const timestampedChunks: string[] = [];
   const chunkSize = 25; // ~25 words per interval
   for (let i = 0; i < words.length; i += chunkSize) {
@@ -41,38 +42,47 @@ export async function pickViralMoments(
     timestampedChunks.push(`[${start}s - ${end}s]: ${text}`);
   }
 
-  const systemPrompt = `You are a world-class YouTube Shorts viral producer and content strategist.
-Your task is to analyze video transcripts and pick exactly ${targetCount} of the most viral, standalone moments suitable for high-performing 9:16 vertical YouTube Shorts.
+  const systemPrompt = `You are an elite YouTube Shorts producer and virality editor.
+Your task is to analyze timestamped video transcripts and extract exactly ${targetCount} of the most viral, standalone moments for 9:16 vertical Shorts.
 
-CRITICAL CRITERIA FOR VIRAL SHORTS:
+STRICT ACCURACY & CONTENT-MATCHING RULES (NO GENERIC AI SLOP):
 1. Clip Length: STRICTLY between 20 and 55 seconds (end - start must be between 20 and 55).
-2. First 3 Seconds: Must open with an irresistible hook, controversial statement, curiosity gap, or explosive question.
-3. Payoff: Must deliver a satisfying, surprising, hilarious, or high-value emotional/informational payoff.
-4. Standalone Context: The viewer should NOT need prior context to understand and enjoy the clip. Clean start (at the beginning of a thought/sentence) and clean end (at the end of a punchline or thought).
-5. Virality Score: Realistic 1-100 score based on retention potential, emotional charge, and shareability.
-6. Title: High-CTR YouTube Shorts title STRICTLY UNDER 70 characters (NO quotes).
-7. Hook Line: Catchy 3-8 word phrase summarizing the opening hook (for video overlays and thumbnails).
-8. Caption: 2-3 engaging lines prompting comments/shares.
-9. Hashtags: Exactly 5 viral hashtags (e.g., #shorts, #mindblown, #podcast, etc.).
+2. The First 3 Seconds: Must open with an explosive hook, dramatic story start, controversy, or curiosity gap.
+3. TITLE MUST MATCH THE EXACT CONTENT IN THE CLIP:
+   - The title MUST name the specific subject, action, person, or question discussed in THAT exact clip.
+   - Example good titles matching transcript: "I Got Fired For Automating My Job", "Why Don Threatened My Mom", "Honeydeck School Shutting Down?", "Paying $20 To Pass AI Interviews".
+   - STRICTLY FORBIDDEN: Do NOT generate generic self-help clichés like "Why 99% Of People Fail", "The Truth Nobody Tells You", "The Secret To Success", or "Never Give Up" unless the speaker is literally saying those exact words.
+   - Under 70 characters, no quotation marks.
+4. HOOK LINE MUST BE THE LITERAL SPOKEN HOOK:
+   - 3 to 8 words capturing the actual first sentence or statement spoken at the start of this clip.
+5. CAPTION MUST SUMMARIZE THE EXACT SCENE:
+   - 2-3 sentences describing exactly what happens or is revealed in this specific clip.
+   - Include a direct quote from the speaker in quotation marks.
+   - Include an engaging question directly tied to the topic.
+6. HASHTAGS:
+   - 5 hashtags matching the real subject (e.g. #storytime, #tech, #career, #coding, #school, #podcast, etc.) rather than generic tags.
+7. Clean In/Out Boundaries:
+   - Start cleanly at the beginning of a sentence.
+   - End cleanly after a punchline, realization, or completed thought.
 
-YOU MUST RETURN VALID JSON WITH THIS EXACT STRUCTURE:
+RETURN VALID JSON WITH THIS EXACT STRUCTURE:
 {
   "moments": [
     {
-      "start": 12.5,
-      "end": 48.0,
-      "virality_score": 94,
-      "reason": "Intense personal story with a shock twist at 35s that guarantees high retention.",
-      "hook_line": "The Truth Nobody Tells You",
-      "title": "Why 99% Of People Fail Before Day 30",
-      "caption": "Most people give up right before the breakthrough. Are you making this mistake?",
-      "hashtags": ["#shorts", "#mindset", "#success", "#motivation", "#lifeadvice"]
+      "start": 14.2,
+      "end": 48.5,
+      "virality_score": 93,
+      "reason": "Direct emotional confrontation in the first 5 seconds with a surprising resolution.",
+      "hook_line": "DON THREATENED ME, MOM SAVED ME",
+      "title": "Why Don Threatened My Mom",
+      "caption": "The terrifying moment things almost went too far. 'She looked him dead in the eye and didn\\'t blink.' Would you have stood your ground?",
+      "hashtags": ["#shorts", "#storytime", "#truestory", "#family", "#podcast"]
     }
   ]
 }`;
 
   const userPrompt = `Video Duration: ${videoDuration.toFixed(1)} seconds.
-Analyze this timestamped transcript and select ${targetCount} top viral standalone moments (each 20-55s duration):
+Analyze this timestamped transcript and select ${targetCount} top viral standalone moments (each 20-55s duration). Ensure every title and description matches what is actually said in that excerpt:
 
 ${timestampedChunks.join('\n\n')}`;
 
@@ -94,7 +104,7 @@ ${timestampedChunks.join('\n\n')}`;
           { role: 'user', content: userPrompt }
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.3
+        temperature: 0.2
       });
       if (completion?.choices?.[0]?.message?.content) {
         break;
@@ -119,55 +129,121 @@ ${timestampedChunks.join('\n\n')}`;
 
   const momentsRaw: any[] = parsed.moments || parsed.clips || parsed.viral_moments || [];
   if (!Array.isArray(momentsRaw) || momentsRaw.length === 0) {
-    throw new Error('LLM did not return any viral moments in JSON format');
+    throw new Error('LLM did not return an array of viral moments in JSON.');
   }
 
-  // Validate and sanitize moments
-  const sanitizedMoments: ViralMoment[] = momentsRaw.map((m: any, index: number) => {
-    let start = Math.max(0, parseFloat(m.start) || 0);
-    let end = Math.min(videoDuration > 0 ? videoDuration : 9999, parseFloat(m.end) || (start + 30));
+  // Validate and sanitize each moment
+  const validatedMoments: ViralMoment[] = [];
+  for (const m of momentsRaw) {
+    let start = parseFloat(m.start);
+    let end = parseFloat(m.end);
 
-    // Ensure 20-55 second bounds
-    let dur = end - start;
-    if (dur < 20) {
+    if (isNaN(start) || isNaN(end) || start >= end) {
+      continue;
+    }
+
+    start = Math.max(0, start);
+    end = Math.min(videoDuration, end);
+
+    // Ensure clip duration is between 15s and 60s
+    let duration = end - start;
+    if (duration < 15) {
       end = Math.min(videoDuration, start + 30);
-      dur = end - start;
+      duration = end - start;
     }
-    if (dur > 55) {
-      end = start + 55;
+    if (duration > 60) {
+      end = start + 58;
     }
 
-    const title = (m.title || `Viral Short #${index + 1}`).trim().substring(0, 70);
-    const hook_line = (m.hook_line || 'Watch This').trim().substring(0, 50);
-    const reason = (m.reason || 'High engagement segment').trim();
-    const caption = (m.caption || title).trim();
-    const virality_score = Math.max(1, Math.min(100, parseInt(m.virality_score, 10) || 85));
+    const title = (m.title || 'Untitled Short')
+      .replace(/["'\\]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .substring(0, 70);
 
-    let hashtags: string[] = Array.isArray(m.hashtags)
-      ? m.hashtags.map((h: string) => h.startsWith('#') ? h : `#${h}`).slice(0, 5)
-      : ['#shorts', '#viral', '#trending', '#foryou', '#reels'];
+    const hook_line = (m.hook_line || title)
+      .replace(/["'\\]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .substring(0, 45);
 
-    if (hashtags.length < 5) {
-      const fallback = ['#shorts', '#viral', '#explore', '#mustwatch', '#clip'];
-      for (const f of fallback) {
-        if (!hashtags.includes(f) && hashtags.length < 5) hashtags.push(f);
+    const caption = (m.caption || title).trim().substring(0, 300);
+
+    let hashtags = m.hashtags;
+    if (typeof hashtags === 'string') {
+      try {
+        hashtags = JSON.parse(hashtags);
+      } catch {
+        hashtags = hashtags.split(/[,\s]+/).map((h: string) => h.startsWith('#') ? h : `#${h}`);
       }
     }
+    if (!Array.isArray(hashtags) || hashtags.length === 0) {
+      hashtags = ['#shorts', '#viral'];
+    }
 
-    return {
-      start,
-      end,
-      virality_score,
-      reason,
+    validatedMoments.push({
+      start: Math.round(start * 10) / 10,
+      end: Math.round(end * 10) / 10,
+      virality_score: Math.min(100, Math.max(1, parseInt(m.virality_score || '85', 10))),
+      reason: m.reason || 'High retention potential and engaging opening hook.',
       hook_line,
       title,
       caption,
-      hashtags
-    };
-  });
+      hashtags: hashtags.slice(0, 5)
+    });
+  }
 
   // Sort by virality score descending
-  sanitizedMoments.sort((a, b) => b.virality_score - a.virality_score);
+  validatedMoments.sort((a, b) => b.virality_score - a.virality_score);
+  return validatedMoments.slice(0, targetCount);
+}
 
-  return sanitizedMoments;
+/**
+ * Regenerates hyper-specific title, hook, and caption for an individual clip
+ * based on its exact spoken transcript segment.
+ */
+export async function regenerateClipMetadata(
+  clipTranscriptText: string
+): Promise<{ title: string; hook_line: string; caption: string; hashtags: string[] }> {
+  const apiKey = CONFIG.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY is not configured in .env');
+  }
+
+  const groq = new Groq({ apiKey });
+
+  const prompt = `You are a YouTube Shorts title & description specialist.
+Analyze this exact dialogue spoken in a 30-50 second clip and generate a viral, hyper-specific title and description matching EXACTLY what is said:
+
+EXACT CLIP TRANSCRIPT:
+"${clipTranscriptText}"
+
+RULES:
+1. Title: Under 70 characters. Must describe the exact topic, question, or story in the transcript (e.g. "I Sold My First Car At 16"). NO generic clichés.
+2. Hook Line: 3-8 words capturing the first spoken sentence.
+3. Caption: 2-3 sentences summarizing the exact scene with a direct quote.
+4. Hashtags: 5 specific tags matching the topic.
+
+RETURN STRICT JSON:
+{
+  "title": "...",
+  "hook_line": "...",
+  "caption": "...",
+  "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"]
+}`;
+
+  const completion = await groq.chat.completions.create({
+    model: 'openai/gpt-oss-120b',
+    messages: [{ role: 'user', content: prompt }],
+    response_format: { type: 'json_object' },
+    temperature: 0.2
+  });
+
+  const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
+  return {
+    title: (parsed.title || 'Untitled Short').replace(/["'\\]/g, '').trim().substring(0, 70),
+    hook_line: (parsed.hook_line || parsed.title || 'HOOK').replace(/["'\\]/g, '').trim().substring(0, 45),
+    caption: (parsed.caption || '').trim().substring(0, 300),
+    hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.slice(0, 5) : ['#shorts', '#viral']
+  };
 }

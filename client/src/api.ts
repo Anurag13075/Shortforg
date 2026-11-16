@@ -54,10 +54,25 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ channel_id, scheduled_time })
     }),
-  renderClip: (id: string, crop_offset_x?: number) =>
-    request<Clip>(`/api/clips/${id}/render`, {
+  renderClip: (
+    id: string,
+    options?: number | {
+      crop_offset_x?: number;
+      caption_preset?: string;
+      caption_active_color?: string;
+      caption_base_color?: string;
+      words_per_burst?: number;
+    }
+  ) => {
+    const payload = typeof options === 'number' ? { crop_offset_x: options } : (options || {});
+    return request<Clip>(`/api/clips/${id}/render`, {
       method: 'POST',
-      body: JSON.stringify({ crop_offset_x })
+      body: JSON.stringify(payload)
+    });
+  },
+  regenerateClipMetadata: (id: string) =>
+    request<Clip>(`/api/clips/${id}/regenerate-metadata`, {
+      method: 'POST'
     }),
   getVideoUrl: (clipId: string) => `/api/clips/${clipId}/video`,
   getThumbnailUrl: (clipId: string) => `/api/clips/${clipId}/thumbnail`,

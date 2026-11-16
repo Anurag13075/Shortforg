@@ -1,6 +1,71 @@
 import { WordTimestamp } from './transcriber.js';
 import fs from 'fs';
 
+export type CaptionPreset = 'hormozi_gold' | 'neon_green' | 'cyber_cyan' | 'sunset_punch' | 'electric_purple' | 'custom';
+
+export interface SubtitleOptions {
+  wordsPerChunk?: number;     // 1 to 3 words per burst (default: 2-3)
+  fontSize?: number;          // default: 80
+  preset?: CaptionPreset;     // preset name
+  activeColorHex?: string;    // e.g. '#FFE600' or '#00FF66'
+  baseColorHex?: string;      // e.g. '#FFFFFF'
+  outlineColorHex?: string;   // e.g. '#000000'
+  animation?: 'bounce' | 'glow' | 'simple';
+}
+
+/**
+ * Converts standard Web Hex (#RRGGBB) to ASS color format (&H00BBGGRR&)
+ */
+export function hexToAssColor(hex: string): string {
+  const clean = hex.replace(/^#/, '').trim();
+  if (clean.length === 6) {
+    const r = clean.substring(0, 2).toUpperCase();
+    const g = clean.substring(2, 4).toUpperCase();
+    const b = clean.substring(4, 6).toUpperCase();
+    return `&H00${b}${g}${r}&`;
+  }
+  return '&H0000FFFF&'; // fallback yellow
+}
+
+export const CAPTION_PRESETS: Record<CaptionPreset, { active: string; base: string; outline: string; label: string }> = {
+  hormozi_gold: {
+    active: '#FFE600',
+    base: '#FFFFFF',
+    outline: '#000000',
+    label: 'Hormozi Gold'
+  },
+  neon_green: {
+    active: '#00FF66',
+    base: '#FFFFFF',
+    outline: '#000000',
+    label: 'Neon Beast'
+  },
+  cyber_cyan: {
+    active: '#00F0FF',
+    base: '#FFFFFF',
+    outline: '#000000',
+    label: 'Cyber Cyan'
+  },
+  sunset_punch: {
+    active: '#FF2E63',
+    base: '#FFFFFF',
+    outline: '#000000',
+    label: 'Sunset Punch'
+  },
+  electric_purple: {
+    active: '#B026FF',
+    base: '#FFFFFF',
+    outline: '#000000',
+    label: 'Electric Purple'
+  },
+  custom: {
+    active: '#FFE600',
+    base: '#FFFFFF',
+    outline: '#000000',
+    label: 'Custom Colors'
+  }
+};
+
 /**
  * Format seconds into ASS subtitle timestamp format: H:MM:SS.cs (centiseconds)
  */
@@ -18,17 +83,9 @@ function formatAssTime(seconds: number): string {
   return `${h}:${mStr}:${sStr}.${csStr}`;
 }
 
-export interface SubtitleOptions {
-  wordsPerChunk?: number; // words per caption burst (default: 3-4)
-  fontSize?: number;      // default: 78
-  activeColor?: string;   // ASS hex BGR (default: Yellow &H002BF7&)
-  normalColor?: string;   // ASS hex BGR (default: White &H00FFFFFF&)
-  outlineColor?: string;  // ASS hex BGR (default: Black &H00000000&)
-}
-
 /**
- * Generates an Advanced SubStation Alpha (.ass) subtitle file with word-by-word animated highlights
- * tailored for vertical 9:16 YouTube Shorts (1080x1920).
+ * Generates an Advanced SubStation Alpha (.ass) subtitle file with Videocaptions.ai style
+ * word-by-word kinetic pop animations and customizable color palettes.
  */
 export function generateAssSubtitles(
   words: WordTimestamp[],
@@ -37,11 +94,16 @@ export function generateAssSubtitles(
   outputPath: string,
   options?: SubtitleOptions
 ): string {
-  const wordsPerChunk = options?.wordsPerChunk || 3;
-  const fontSize = options?.fontSize || 78;
-  const activeColor = options?.activeColor || '&H002BF7&'; // Vibrant Yellow/Gold in ASS (BBGGRR)
-  const normalColor = options?.normalColor || '&H00FFFFFF&'; // Pure White
-  const outlineColor = options?.outlineColor || '&H00000000&'; // Solid Black
+  const presetKey = options?.preset || 'hormozi_gold';
+  const presetConfig = CAPTION_PRESETS[presetKey] || CAPTION_PRESETS.hormozi_gold;
+
+  const activeColor = hexToAssColor(options?.activeColorHex || presetConfig.active);
+  const baseColor = hexToAssColor(options?.baseColorHex || presetConfig.base);
+  const outlineColor = hexToAssColor(options?.outlineColorHex || presetConfig.outline);
+
+  const wordsPerChunk = Math.max(1, Math.min(4, options?.wordsPerChunk || 2));
+  const fontSize = options?.fontSize || 82;
+  const animation = options?.animation || 'bounce';
 
   // Filter words that belong to this clip segment and normalize times relative to clip start (0)
   const clipWords = words
@@ -49,11 +111,11 @@ export function generateAssSubtitles(
     .map((w) => ({
       word: w.word.trim(),
       start: Math.max(0, w.start - clipStart),
-      end: Math.max(0.1, w.end - clipStart)
+      end: Math.max(0.08, w.end - clipStart)
     }))
     .filter((w) => w.word.length > 0);
 
-  // Group words into short chunks of 3-4 words for high readability on vertical screens
+  // Group words into short chunks (1-3 words) for rapid visual flow like Videocaptions.ai
   interface WordGroup {
     words: { word: string; start: number; end: number }[];
     startTime: number;
@@ -67,14 +129,14 @@ export function generateAssSubtitles(
       groups.push({
         words: chunk,
         startTime: chunk[0].start,
-        endTime: chunk[chunk.length - 1].end + 0.15 // slight pad for trailing eye contact
+        endTime: chunk[chunk.length - 1].end + 0.12
       });
     }
   }
 
-  // Generate ASS script header
+  // Generate ASS script header with high-impact font and heavy outline
   const header = `[Script Info]
-Title: ShortsForge Animated Captions
+Title: ShortsForge Kinetic Captions
 ScriptType: v4.00+
 WrapStyle: 0
 ScaledBorderAndShadow: yes
@@ -84,7 +146,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Montserrat,${fontSize},${normalColor},&H00000000,${outlineColor},&H90000000,-1,0,0,0,100,100,0,0,1,9,4,2,60,60,620,1
+Style: Default,Impact,${fontSize},${baseColor},&H00000000,${outlineColor},&H80000000,-1,0,0,0,100,100,1,0,1,10,4,2,60,60,560,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -92,27 +154,30 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
   const dialogueLines: string[] = [];
 
-  // For each group, create active-word highlight events
+  // For each group, generate the active-word highlight events with kinetic bounce animation
   for (const group of groups) {
     const totalInGroup = group.words.length;
 
     for (let activeIdx = 0; activeIdx < totalInGroup; activeIdx++) {
       const activeWord = group.words[activeIdx];
       const startT = activeWord.start;
-      // The highlight stays until next word starts, or until group ends
-      const endT = (activeIdx < totalInGroup - 1)
+      const endT = activeIdx < totalInGroup - 1
         ? Math.max(activeWord.end, group.words[activeIdx + 1].start)
         : group.endTime;
 
       if (endT <= startT) continue;
 
-      // Construct the formatted string with the active word styled in gold/yellow
+      // Construct formatted string
       const formattedWords = group.words.map((w, idx) => {
         const cleanWord = w.word.toUpperCase().replace(/[{}]/g, '');
         if (idx === activeIdx) {
-          return `{\\c${activeColor}\\b1\\fscx108\\fscy108}${cleanWord}{\\r\\c${normalColor}}`;
+          if (animation === 'bounce') {
+            // Videocaptions.ai kinetic zoom pop: word pops up to 120% scale with active color
+            return `{\\c${activeColor}\\b1\\fscx120\\fscy120}${cleanWord}{\\r\\c${baseColor}}`;
+          }
+          return `{\\c${activeColor}\\b1}${cleanWord}{\\r\\c${baseColor}}`;
         }
-        return `{\\c${normalColor}\\b1}${cleanWord}`;
+        return `{\\c${baseColor}\\b1}${cleanWord}`;
       });
 
       const text = formattedWords.join(' ');

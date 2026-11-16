@@ -30,6 +30,10 @@ export interface Clip {
   video_path: string | null;
   thumbnail_path: string | null;
   status: 'draft' | 'approved' | 'rejected' | 'rendering';
+  caption_preset?: 'hormozi_gold' | 'neon_green' | 'cyber_cyan' | 'sunset_punch' | 'electric_purple' | 'custom' | null;
+  caption_active_color?: string | null;
+  caption_base_color?: string | null;
+  words_per_burst?: number | null;
   assigned_channel_id?: string | null;
   assigned_channel_title?: string | null;
   assigned_channel_avatar?: string | null;

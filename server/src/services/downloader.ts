@@ -17,33 +17,17 @@ export interface DownloadResult {
 let cachedYtDlpPath: string | null = null;
 
 /**
- * Ensures yt-dlp binary is available.
- * 1. Checks system PATH
- * 2. Checks common /usr/local/bin or local ./bin paths
- * 3. Downloads standalone official binary if missing
+ * Ensures latest yt-dlp binary is available.
+ * 1. Checks local ./bin/yt-dlp
+ * 2. Checks standard PATH
+ * 3. Downloads standalone official binary from GitHub releases if missing
  */
 export async function ensureYtDlpBinary(): Promise<string> {
   if (cachedYtDlpPath && fs.existsSync(cachedYtDlpPath)) {
     return cachedYtDlpPath;
   }
 
-  // 1. Check if yt-dlp runs directly from PATH
-  try {
-    execSync('yt-dlp --version', { stdio: 'ignore' });
-    cachedYtDlpPath = 'yt-dlp';
-    return 'yt-dlp';
-  } catch {}
-
-  // 2. Check standard Linux locations
-  const standardPaths = ['/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp'];
-  for (const p of standardPaths) {
-    if (fs.existsSync(p)) {
-      cachedYtDlpPath = p;
-      return p;
-    }
-  }
-
-  // 3. Check local bin directory inside application root
+  // 1. Check local bin directory inside application root (always prefer latest official release)
   const binDir = path.resolve(__dirname, '../../../bin');
   const binaryName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
   const localBinary = path.join(binDir, binaryName);
@@ -53,8 +37,23 @@ export async function ensureYtDlpBinary(): Promise<string> {
     return localBinary;
   }
 
-  // 4. Download standalone binary from official GitHub releases
-  console.log(`⬇️ Downloading standalone yt-dlp binary for ${process.platform}...`);
+  // 2. Check standard Linux / PATH locations
+  const standardPaths = ['/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp'];
+  for (const p of standardPaths) {
+    if (fs.existsSync(p)) {
+      cachedYtDlpPath = p;
+      return p;
+    }
+  }
+
+  try {
+    execSync('yt-dlp --version', { stdio: 'ignore' });
+    cachedYtDlpPath = 'yt-dlp';
+    return 'yt-dlp';
+  } catch {}
+
+  // 3. Download standalone official binary from GitHub releases
+  console.log(`⬇️ Downloading latest standalone yt-dlp binary for ${process.platform}...`);
   if (!fs.existsSync(binDir)) {
     fs.mkdirSync(binDir, { recursive: true });
   }
@@ -63,52 +62,58 @@ export async function ensureYtDlpBinary(): Promise<string> {
     ? 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
     : 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp';
 
-  const writer = fs.createWriteStream(localBinary);
-  const response = await axios({
-    method: 'GET',
-    url: downloadUrl,
-    responseType: 'stream',
-    timeout: 120000
-  });
+  try {
+    const writer = fs.createWriteStream(localBinary);
+    const response = await axios({
+      method: 'GET',
+      url: downloadUrl,
+      responseType: 'stream',
+      timeout: 120000
+    });
 
-  await new Promise<void>((resolve, reject) => {
-    response.data.pipe(writer);
-    writer.on('finish', () => resolve());
-    writer.on('error', (err) => reject(err));
-  });
+    await new Promise<void>((resolve, reject) => {
+      response.data.pipe(writer);
+      writer.on('finish', () => resolve());
+      writer.on('error', (err) => reject(err));
+    });
 
-  if (process.platform !== 'win32') {
-    fs.chmodSync(localBinary, 0o755);
+    if (process.platform !== 'win32') {
+      fs.chmodSync(localBinary, 0o755);
+    }
+
+    console.log(`✅ Latest official yt-dlp binary ready at ${localBinary}`);
+    cachedYtDlpPath = localBinary;
+    return localBinary;
+  } catch (err: any) {
+    console.warn('Failed to download standalone yt-dlp from GitHub, using system PATH fallback:', err.message);
+    cachedYtDlpPath = 'yt-dlp';
+    return 'yt-dlp';
   }
-
-  console.log(`✅ yt-dlp binary ready at ${localBinary}`);
-  cachedYtDlpPath = localBinary;
-  return localBinary;
 }
 
 /**
- * Primary Self-Hosted YouTube Downloader
- * Uses yt-dlp with mobile client spoofing to bypass datacenter IP restrictions
+ * Run yt-dlp with specific player client arguments.
+ * iOS client is the primary choice because it does NOT require web bot authentication tokens on datacenter IPs.
  */
-async function downloadWithYtDlp(
+async function runYtDlpWithClient(
+  ytDlpCmd: string,
   youtubeUrl: string,
   outputDir: string,
+  playerClient: string,
   onProgress?: (progressPercent: number, message: string) => void
 ): Promise<DownloadResult> {
-  onProgress?.(8, 'Initializing self-hosted downloader engine (yt-dlp)...');
-  const ytDlpCmd = await ensureYtDlpBinary();
-
   const timestamp = Date.now();
   const outputTemplate = path.join(outputDir, `source_${timestamp}_%(title).40s.%(ext)s`);
 
   return new Promise((resolve, reject) => {
-    onProgress?.(15, 'Fetching video stream with mobile app spoofing (1080p)...');
+    // Check if optional cookies file exists
+    const cookiesFilePath = path.join(outputDir, '../cookies.txt');
+    const hasCookies = fs.existsSync(cookiesFilePath);
 
     const args = [
       '-f', 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
       '--merge-output-format', 'mp4',
-      '--extractor-args', 'youtube:player_client=android,ios,web',
-      '--user-agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+      '--extractor-args', `youtube:player_client=${playerClient}`,
       '--no-playlist',
       '--no-check-certificates',
       '--prefer-free-formats',
@@ -116,9 +121,14 @@ async function downloadWithYtDlp(
       '--print', 'after_move:filepath',
       '--print', 'after_move:title',
       '--print', 'after_move:duration',
-      '-o', outputTemplate,
-      youtubeUrl
+      '-o', outputTemplate
     ];
+
+    if (hasCookies) {
+      args.push('--cookies', cookiesFilePath);
+    }
+
+    args.push(youtubeUrl);
 
     const child = spawn(ytDlpCmd, args);
     let stdout = '';
@@ -128,7 +138,6 @@ async function downloadWithYtDlp(
       const text = d.toString();
       stdout += text;
 
-      // Parse download percentage from yt-dlp output
       const match = text.match(/\[download\]\s+(\d+(?:\.\d+)?)%/);
       if (match && onProgress) {
         const percent = Math.min(60, 15 + Math.floor(parseFloat(match[1]) * 0.45));
@@ -143,10 +152,8 @@ async function downloadWithYtDlp(
     child.on('close', (code) => {
       if (code === 0) {
         const lines = stdout.trim().split('\n').map((l) => l.trim()).filter(Boolean);
-        // Find line ending in .mp4
         let filePath = lines.find((l) => l.endsWith('.mp4'));
         if (!filePath || !fs.existsSync(filePath)) {
-          // Fallback: look for file in outputDir matching timestamp
           const files = fs.readdirSync(outputDir).filter((f) => f.includes(`source_${timestamp}`) && f.endsWith('.mp4'));
           if (files.length > 0) {
             filePath = path.join(outputDir, files[0]);
@@ -157,16 +164,11 @@ async function downloadWithYtDlp(
           const title = lines[1] || path.basename(filePath, '.mp4').replace(`source_${timestamp}_`, '');
           const duration = parseFloat(lines[2] || '0');
           onProgress?.(60, 'Video downloaded successfully!');
-          return resolve({
-            filePath,
-            title,
-            duration
-          });
+          return resolve({ filePath, title, duration });
         }
       }
 
-      // If failed, reject with details
-      reject(new Error(`yt-dlp download failed (${code}): ${stderr.slice(-300) || stdout.slice(-300)}`));
+      reject(new Error(`Client ${playerClient} failed (${code}): ${stderr.slice(-300) || stdout.slice(-300)}`));
     });
 
     child.on('error', (err) => {
@@ -176,7 +178,85 @@ async function downloadWithYtDlp(
 }
 
 /**
- * Secondary VidKraken API Downloader (Fallback)
+ * Free Cobalt Scraper Fallback
+ * Downloads high quality stream via public Cobalt instance when datacenter IPs are blocked
+ */
+async function downloadWithCobalt(
+  youtubeUrl: string,
+  outputDir: string,
+  onProgress?: (progressPercent: number, message: string) => void
+): Promise<DownloadResult> {
+  onProgress?.(15, 'Requesting stream via open proxy network (Cobalt engine)...');
+
+  const cobaltInstances = [
+    'https://api.cobalt.tools',
+    'https://cobalt.api.scip.io',
+    'https://co.wuk.sh'
+  ];
+
+  let streamUrl: string | null = null;
+  let videoTitle = 'YouTube Video';
+
+  for (const instance of cobaltInstances) {
+    try {
+      const res = await axios.post(
+        `${instance}/api/json`,
+        {
+          url: youtubeUrl,
+          vQuality: '1080',
+          filenamePattern: 'classic'
+        },
+        {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          timeout: 25000
+        }
+      );
+
+      if (res.data?.url) {
+        streamUrl = res.data.url;
+        if (res.data.filename) {
+          videoTitle = res.data.filename.replace(/\.mp4$/i, '');
+        }
+        break;
+      }
+    } catch {}
+  }
+
+  if (!streamUrl) {
+    throw new Error('Open proxy engines were unavailable or did not return stream URL.');
+  }
+
+  onProgress?.(25, 'Downloading video file from high-speed stream...');
+  const fileName = `source_${Date.now()}_stream.mp4`;
+  const filePath = path.join(outputDir, fileName);
+
+  const writer = fs.createWriteStream(filePath);
+  const response = await axios({
+    method: 'GET',
+    url: streamUrl,
+    responseType: 'stream',
+    timeout: 300000
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    response.data.pipe(writer);
+    writer.on('finish', () => resolve());
+    writer.on('error', (err) => reject(err));
+  });
+
+  onProgress?.(60, 'Video downloaded successfully!');
+  return {
+    filePath,
+    title: videoTitle,
+    duration: 0
+  };
+}
+
+/**
+ * VidKraken API Downloader (Fallback)
  */
 async function downloadWithVidKraken(
   youtubeUrl: string,
@@ -256,9 +336,13 @@ async function downloadWithVidKraken(
 
 /**
  * Universal Downloader for ShortsForge
- * 1. Direct video URLs (MP4 / WebM / CDN) -> Direct streaming
- * 2. YouTube URLs -> Built-in Self-Hosted yt-dlp engine (Primary)
- * 3. Fallback -> VidKraken (if key available)
+ * 1. Direct video URLs (MP4 / WebM / CDN) -> Direct stream
+ * 2. Multi-tier yt-dlp spoofing:
+ *    - Tier A: iOS client (highest success rate on cloud IPs, avoids web challenge)
+ *    - Tier B: Android client
+ *    - Tier C: mweb client
+ * 3. Fallback: Free Cobalt proxy scraper
+ * 4. Fallback: VidKraken (if key available and has credits)
  */
 export async function downloadYouTubeVideo(
   youtubeUrl: string,
@@ -295,21 +379,38 @@ export async function downloadYouTubeVideo(
     };
   }
 
-  // 2. Primary Engine: Built-in Self-Hosted yt-dlp
-  try {
-    return await downloadWithYtDlp(youtubeUrl, outputDir, onProgress);
-  } catch (ytdlError: any) {
-    console.warn('Primary yt-dlp engine failed, attempting VidKraken fallback:', ytdlError.message);
+  // 2. Self-Hosted yt-dlp Engine with multi-client spoofing
+  const ytDlpCmd = await ensureYtDlpBinary();
 
-    // 3. Fallback: VidKraken if configured
-    if (CONFIG.VIDKRAKEN_API_KEY) {
-      try {
-        return await downloadWithVidKraken(youtubeUrl, outputDir, CONFIG.VIDKRAKEN_API_KEY, onProgress);
-      } catch (vkError: any) {
-        throw new Error(`Self-hosted download failed (${ytdlError.message}), and VidKraken fallback failed (${vkError.message})`);
-      }
+  // Try iOS client first (bypasses web bot checks), then android, then mweb
+  const clientsToTry = ['ios', 'android', 'mweb'];
+  let lastYtDlpError: string = '';
+
+  for (const client of clientsToTry) {
+    try {
+      onProgress?.(12, `Attempting YouTube stream extraction (${client} mobile engine)...`);
+      return await runYtDlpWithClient(ytDlpCmd, youtubeUrl, outputDir, client, onProgress);
+    } catch (err: any) {
+      console.warn(`yt-dlp with client ${client} failed:`, err.message);
+      lastYtDlpError = err.message;
     }
-
-    throw ytdlError;
   }
+
+  // 3. Open Proxy / Cobalt Fallback
+  try {
+    return await downloadWithCobalt(youtubeUrl, outputDir, onProgress);
+  } catch (cobaltErr: any) {
+    console.warn('Cobalt stream fallback failed:', cobaltErr.message);
+  }
+
+  // 4. VidKraken Fallback (if configured)
+  if (CONFIG.VIDKRAKEN_API_KEY) {
+    try {
+      return await downloadWithVidKraken(youtubeUrl, outputDir, CONFIG.VIDKRAKEN_API_KEY, onProgress);
+    } catch (vkError: any) {
+      console.warn('VidKraken fallback failed:', vkError.message);
+    }
+  }
+
+  throw new Error(`Download engine could not fetch video: ${lastYtDlpError || 'YouTube stream blocked'}. If this video requires authentication, paste a direct video link or try another YouTube link.`);
 }

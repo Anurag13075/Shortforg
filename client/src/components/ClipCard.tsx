@@ -15,7 +15,10 @@ import {
   Calendar,
   Send,
   Youtube,
-  CheckCircle2
+  CheckCircle2,
+  Sparkles,
+  Palette,
+  Type
 } from 'lucide-react';
 import { Clip, Channel } from '../types';
 import { api } from '../api';
@@ -27,9 +30,19 @@ interface ClipCardProps {
   onToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
+const CAPTION_PRESET_MAP: Record<string, { label: string; active: string; base: string }> = {
+  hormozi_gold: { label: 'Hormozi Gold', active: '#FFE600', base: '#FFFFFF' },
+  neon_green: { label: 'Neon Beast', active: '#00FF66', base: '#FFFFFF' },
+  cyber_cyan: { label: 'Cyber Cyan', active: '#00F0FF', base: '#FFFFFF' },
+  sunset_punch: { label: 'Sunset Punch', active: '#FF2E63', base: '#FFFFFF' },
+  electric_purple: { label: 'Electric Purple', active: '#B026FF', base: '#FFFFFF' },
+  custom: { label: 'Custom Colors', active: '#FFE600', base: '#FFFFFF' }
+};
+
 export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, onToast }) => {
   const [activeTab, setActiveTab] = useState<'video' | 'thumbnail'>('video');
   const [showMetadata, setShowMetadata] = useState(false);
+  const [showCaptionStudio, setShowCaptionStudio] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(clip.title);
@@ -43,8 +56,16 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
     }
   });
   const [cropOffset, setCropOffset] = useState(clip.crop_offset_x || 0);
+
+  // Caption Styling states
+  const [captionPreset, setCaptionPreset] = useState<string>(clip.caption_preset || 'hormozi_gold');
+  const [captionActiveColor, setCaptionActiveColor] = useState<string>(clip.caption_active_color || '#FFE600');
+  const [captionBaseColor, setCaptionBaseColor] = useState<string>(clip.caption_base_color || '#FFFFFF');
+  const [wordsPerBurst, setWordsPerBurst] = useState<number>(clip.words_per_burst || 2);
+
   const [isSaving, setIsSaving] = useState(false);
   const [isRendering, setIsRendering] = useState(clip.status === 'rendering');
+  const [isRegeneratingMetadata, setIsRegeneratingMetadata] = useState(false);
 
   // Channel & scheduling states
   const [selectedChannelId, setSelectedChannelId] = useState<string>(
@@ -109,6 +130,16 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
     }
   };
 
+  const handlePresetSelect = (presetKey: string) => {
+    setCaptionPreset(presetKey);
+    const cfg = CAPTION_PRESET_MAP[presetKey];
+    if (cfg && presetKey !== 'custom') {
+      setCaptionActiveColor(cfg.active);
+      setCaptionBaseColor(cfg.base);
+    }
+    setIsEditing(true);
+  };
+
   const handleSaveChanges = async () => {
     setIsSaving(true);
     try {
@@ -122,7 +153,11 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
         caption: caption.trim(),
         hashtags: JSON.stringify(tagsArray),
         crop_offset_x: cropOffset,
-        assigned_channel_id: selectedChannelId || undefined
+        assigned_channel_id: selectedChannelId || undefined,
+        caption_preset: captionPreset,
+        caption_active_color: captionActiveColor,
+        caption_base_color: captionBaseColor,
+        words_per_burst: wordsPerBurst
       });
 
       onUpdate(updated);
@@ -137,15 +172,43 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
 
   const handleRegenerate = async () => {
     setIsRendering(true);
-    onToast('Re-rendering vertical crop with FFmpeg...', 'info');
+    onToast('Re-rendering 9:16 crop & kinetic subtitles with FFmpeg...', 'info');
     try {
-      const updated = await api.renderClip(clip.id, cropOffset);
+      const updated = await api.renderClip(clip.id, {
+        crop_offset_x: cropOffset,
+        caption_preset: captionPreset,
+        caption_active_color: captionActiveColor,
+        caption_base_color: captionBaseColor,
+        words_per_burst: wordsPerBurst
+      });
       onUpdate(updated);
-      onToast('Short re-rendered successfully!', 'success');
+      onToast('Short and captions re-rendered successfully!', 'success');
     } catch (err: any) {
       onToast(`Re-render failed: ${err.message}`, 'error');
     } finally {
       setIsRendering(false);
+    }
+  };
+
+  const handleRegenerateMetadata = async () => {
+    setIsRegeneratingMetadata(true);
+    onToast('Analyzing spoken transcript for exact quote match...', 'info');
+    try {
+      const updated = await api.regenerateClipMetadata(clip.id);
+      setTitle(updated.title);
+      setCaption(updated.caption || '');
+      try {
+        const parsed = JSON.parse(updated.hashtags || '[]');
+        setHashtags(Array.isArray(parsed) ? parsed.join(' ') : (updated.hashtags || ''));
+      } catch {
+        setHashtags(updated.hashtags || '');
+      }
+      onUpdate(updated);
+      onToast('Title & description updated from video speech!', 'success');
+    } catch (err: any) {
+      onToast(`Failed to regenerate metadata: ${err.message}`, 'error');
+    } finally {
+      setIsRegeneratingMetadata(false);
     }
   };
 
@@ -290,10 +353,23 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
             </p>
           )}
 
-          {/* Title Editor */}
+          {/* Title Editor with AI Exact Quote Match */}
           <div className="mb-2">
             <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono mb-1">
-              <span>TITLE</span>
+              <span className="flex items-center gap-1.5">
+                <span>TITLE</span>
+                <span className="text-zinc-600">•</span>
+                <button
+                  type="button"
+                  onClick={handleRegenerateMetadata}
+                  disabled={isRegeneratingMetadata}
+                  className="inline-flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 font-mono transition-colors disabled:opacity-40"
+                  title="Generate exact title & description matching the video transcript"
+                >
+                  <Sparkles className={`w-3 h-3 ${isRegeneratingMetadata ? 'animate-spin' : ''}`} />
+                  <span>{isRegeneratingMetadata ? 'Matching speech...' : 'Match Speech (AI)'}</span>
+                </button>
+              </span>
               <span>{title.length}/70</span>
             </div>
             <input
@@ -369,6 +445,154 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
                   placeholder="#shorts #viral..."
                   className="w-full bg-black/40 border border-white/[0.06] rounded-lg px-2.5 py-1.5 text-xs text-blue-400 font-mono focus:outline-none focus:border-white/20"
                 />
+              </div>
+            )}
+          </div>
+
+          {/* Collapsible Caption Studio (Videocaptions.ai Kinetic Pop Style) */}
+          <div className="mb-2">
+            <button
+              onClick={() => setShowCaptionStudio(!showCaptionStudio)}
+              className="flex items-center justify-between w-full text-[10px] font-mono text-zinc-400 hover:text-white py-1 transition-colors"
+            >
+              <span className="flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5 text-amber-400" />
+                <span className="font-semibold text-zinc-300">CAPTIONS & PRESETS</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-400/10 text-amber-300 border border-amber-400/20 font-mono font-medium">
+                  POP STYLE
+                </span>
+              </span>
+              {showCaptionStudio ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+
+            {showCaptionStudio && (
+              <div className="space-y-2.5 mt-2 p-2.5 rounded-lg bg-black/50 border border-white/[0.08] animate-fade-in text-xs">
+                {/* Presets Swatches */}
+                <div>
+                  <span className="text-[9px] font-mono text-zinc-500 uppercase block mb-1.5">
+                    Viral Style Presets
+                  </span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {Object.entries(CAPTION_PRESET_MAP).map(([key, cfg]) => {
+                      const isSelected = captionPreset === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => handlePresetSelect(key)}
+                          className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono border transition-all ${
+                            isSelected
+                              ? 'bg-zinc-800 text-white border-white/30 shadow-sm'
+                              : 'bg-zinc-950/60 text-zinc-400 border-white/[0.06] hover:text-zinc-200'
+                          }`}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/40"
+                            style={{ backgroundColor: cfg.active }}
+                          />
+                          <span className="truncate">{cfg.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Color Pickers & Live Preview */}
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/[0.06]">
+                  <div>
+                    <label className="text-[9px] font-mono text-zinc-400 block mb-1">
+                      Active Word Color
+                    </label>
+                    <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded px-2 py-1">
+                      <input
+                        type="color"
+                        value={captionActiveColor}
+                        onChange={(e) => {
+                          setCaptionActiveColor(e.target.value);
+                          setCaptionPreset('custom');
+                          setIsEditing(true);
+                        }}
+                        className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
+                      />
+                      <span className="font-mono text-[10px] text-zinc-300 uppercase">
+                        {captionActiveColor}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[9px] font-mono text-zinc-400 block mb-1">
+                      Base Text Color
+                    </label>
+                    <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded px-2 py-1">
+                      <input
+                        type="color"
+                        value={captionBaseColor}
+                        onChange={(e) => {
+                          setCaptionBaseColor(e.target.value);
+                          setCaptionPreset('custom');
+                          setIsEditing(true);
+                        }}
+                        className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
+                      />
+                      <span className="font-mono text-[10px] text-zinc-300 uppercase">
+                        {captionBaseColor}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Words Per Burst */}
+                <div className="pt-1 border-t border-white/[0.06]">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[9px] font-mono text-zinc-400 uppercase">
+                      Words Per Screen (Videocaptions Pace)
+                    </span>
+                    <span className="font-mono text-[10px] text-zinc-300 font-bold">
+                      {wordsPerBurst} {wordsPerBurst === 1 ? 'word' : 'words'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1">
+                    {[1, 2, 3].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => {
+                          setWordsPerBurst(num);
+                          setIsEditing(true);
+                        }}
+                        className={`py-1 text-[10px] font-mono rounded border transition-colors ${
+                          wordsPerBurst === num
+                            ? 'bg-amber-400/20 text-amber-300 border-amber-400/40 font-bold'
+                            : 'bg-zinc-900 text-zinc-500 border-white/[0.06] hover:text-white'
+                        }`}
+                      >
+                        {num === 1 ? '1 Word' : num === 2 ? '2 Words (Pop)' : '3 Words'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live Caption Visual Preview */}
+                <div className="p-2.5 rounded bg-black border border-white/10 text-center font-black uppercase tracking-wider text-sm flex items-center justify-center gap-1.5 shadow-inner">
+                  <span style={{ color: captionActiveColor }} className="scale-110 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+                    KINETIC
+                  </span>
+                  <span style={{ color: captionBaseColor }} className="drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">
+                    CAPTIONS
+                  </span>
+                </div>
+
+                {/* Quick Apply & Re-render button */}
+                <button
+                  type="button"
+                  onClick={handleRegenerate}
+                  disabled={isRendering}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-semibold border border-white/10 shadow transition-colors disabled:opacity-40"
+                >
+                  <RotateCw className={`w-3 h-3 ${isRendering ? 'animate-spin' : ''}`} />
+                  <span>Re-render Captions with FFmpeg</span>
+                </button>
               </div>
             )}
           </div>

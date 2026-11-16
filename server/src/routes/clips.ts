@@ -4,6 +4,8 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { db, ClipRecord, ChannelRecord } from '../db/index.js';
 import { PipelineService } from '../services/pipeline.js';
+import { regenerateClipMetadata } from '../services/momentPicker.js';
+import { CONFIG } from '../config.js';
 
 export const clipsRouter = Router();
 
@@ -66,7 +68,18 @@ clipsRouter.get('/:id', (req: Request, res: Response) => {
  * PATCH /api/clips/:id - Update clip metadata, status (approve/reject/draft), crop offset, or assigned channel
  */
 clipsRouter.patch('/:id', (req: Request, res: Response) => {
-  const { title, caption, hashtags, status, crop_offset_x, assigned_channel_id } = req.body;
+  const {
+    title,
+    caption,
+    hashtags,
+    status,
+    crop_offset_x,
+    assigned_channel_id,
+    caption_preset,
+    caption_active_color,
+    caption_base_color,
+    words_per_burst
+  } = req.body;
   const clipId = req.params.id;
 
   try {
@@ -81,13 +94,18 @@ clipsRouter.patch('/:id', (req: Request, res: Response) => {
     const newStatus = status !== undefined ? status : clip.status;
     const newOffset = crop_offset_x !== undefined ? parseFloat(crop_offset_x) : clip.crop_offset_x;
     const newChannelId = assigned_channel_id !== undefined ? assigned_channel_id : clip.assigned_channel_id;
+    const newPreset = caption_preset !== undefined ? String(caption_preset) : (clip.caption_preset || 'hormozi_gold');
+    const newActiveColor = caption_active_color !== undefined ? String(caption_active_color) : (clip.caption_active_color || '#FFE600');
+    const newBaseColor = caption_base_color !== undefined ? String(caption_base_color) : (clip.caption_base_color || '#FFFFFF');
+    const newBurst = words_per_burst !== undefined ? parseInt(String(words_per_burst), 10) : (clip.words_per_burst || 2);
     const now = new Date().toISOString();
 
     db.prepare(`
       UPDATE clips
-      SET title = ?, caption = ?, hashtags = ?, status = ?, crop_offset_x = ?, assigned_channel_id = ?, updated_at = ?
+      SET title = ?, caption = ?, hashtags = ?, status = ?, crop_offset_x = ?, assigned_channel_id = ?,
+          caption_preset = ?, caption_active_color = ?, caption_base_color = ?, words_per_burst = ?, updated_at = ?
       WHERE id = ?
-    `).run(newTitle, newCaption, newHashtags, newStatus, newOffset, newChannelId, now, clipId);
+    `).run(newTitle, newCaption, newHashtags, newStatus, newOffset, newChannelId, newPreset, newActiveColor, newBaseColor, newBurst, now, clipId);
 
     const updated = db.prepare(`
       SELECT c.*, ch.title as assigned_channel_title, ch.avatar_url as assigned_channel_avatar
@@ -155,16 +173,93 @@ clipsRouter.post('/:id/schedule', (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/clips/:id/render - Trigger re-render of clip after editing crop offset or hook
+ * POST /api/clips/:id/render - Trigger re-render of clip after editing crop offset or caption styling
  */
 clipsRouter.post('/:id/render', async (req: Request, res: Response) => {
   const clipId = String(req.params.id);
-  const { crop_offset_x } = req.body;
+  const {
+    crop_offset_x,
+    caption_preset,
+    caption_active_color,
+    caption_base_color,
+    words_per_burst
+  } = req.body;
 
   try {
-    const offset = crop_offset_x !== undefined ? parseFloat(crop_offset_x) : undefined;
-    const updatedClip = await PipelineService.reRenderClip(clipId, offset);
+    const updatedClip = await PipelineService.reRenderClip(clipId, {
+      cropOffsetX: crop_offset_x !== undefined ? parseFloat(crop_offset_x) : undefined,
+      captionPreset: caption_preset,
+      captionActiveColor: caption_active_color,
+      captionBaseColor: caption_base_color,
+      wordsPerBurst: words_per_burst !== undefined ? parseInt(String(words_per_burst), 10) : undefined
+    });
     res.json({ success: true, data: updatedClip });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/clips/:id/regenerate-metadata - AI regenerate title, hook, and description strictly matching the exact spoken dialogue
+ */
+clipsRouter.post('/:id/regenerate-metadata', async (req: Request, res: Response) => {
+  const clipId = String(req.params.id);
+
+  try {
+    const clip = db.prepare('SELECT * FROM clips WHERE id = ?').get(clipId) as ClipRecord | undefined;
+    if (!clip) return res.status(404).json({ success: false, error: 'Clip not found' });
+
+    // Look for transcript.json in project storage directory
+    const projectDir = path.join(CONFIG.STORAGE_DIR, clip.project_id);
+    const transcriptPath = path.join(projectDir, 'transcript.json');
+
+    let transcriptSliceText = '';
+    if (fs.existsSync(transcriptPath)) {
+      try {
+        const transData = JSON.parse(fs.readFileSync(transcriptPath, 'utf-8'));
+        if (Array.isArray(transData.words)) {
+          const matchingWords = transData.words.filter(
+            (w: any) => w.end >= clip.start_time && w.start <= clip.end_time
+          );
+          transcriptSliceText = matchingWords.map((w: any) => w.word).join(' ');
+        }
+      } catch (err: any) {
+        console.warn('Could not parse transcript.json for clip:', err.message);
+      }
+    }
+
+    if (!transcriptSliceText && clip.caption) {
+      transcriptSliceText = clip.caption;
+    }
+
+    if (!transcriptSliceText) {
+      transcriptSliceText = clip.title;
+    }
+
+    const newMetadata = await regenerateClipMetadata(transcriptSliceText);
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      UPDATE clips
+      SET title = ?, hook_line = ?, caption = ?, hashtags = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      newMetadata.title,
+      newMetadata.hook_line,
+      newMetadata.caption,
+      JSON.stringify(newMetadata.hashtags),
+      now,
+      clipId
+    );
+
+    const updated = db.prepare(`
+      SELECT c.*, ch.title as assigned_channel_title, ch.avatar_url as assigned_channel_avatar
+      FROM clips c
+      LEFT JOIN channels ch ON c.assigned_channel_id = ch.id
+      WHERE c.id = ?
+    `).get(clipId) as ClipRecord;
+
+    res.json({ success: true, data: updated });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

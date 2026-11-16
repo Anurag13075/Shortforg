@@ -138,6 +138,10 @@ export function initDatabase() {
       video_path TEXT,
       thumbnail_path TEXT,
       status TEXT NOT NULL DEFAULT 'draft', -- draft, approved, rejected, rendering
+      caption_preset TEXT DEFAULT 'hormozi_gold',
+      caption_active_color TEXT DEFAULT '#FFE600',
+      caption_base_color TEXT DEFAULT '#FFFFFF',
+      words_per_burst INTEGER DEFAULT 2,
       assigned_channel_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -181,6 +185,18 @@ export function initDatabase() {
   try {
     db.exec('ALTER TABLE clips ADD COLUMN assigned_channel_id TEXT;');
   } catch {}
+  try {
+    db.exec("ALTER TABLE clips ADD COLUMN caption_preset TEXT DEFAULT 'hormozi_gold';");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE clips ADD COLUMN caption_active_color TEXT DEFAULT '#FFE600';");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE clips ADD COLUMN caption_base_color TEXT DEFAULT '#FFFFFF';");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE clips ADD COLUMN words_per_burst INTEGER DEFAULT 2;");
+  } catch {}
 }
 
 export interface ProjectRecord {
@@ -212,6 +228,10 @@ export interface ClipRecord {
   video_path: string | null;
   thumbnail_path: string | null;
   status: 'draft' | 'approved' | 'rejected' | 'rendering';
+  caption_preset?: string | null;
+  caption_active_color?: string | null;
+  caption_base_color?: string | null;
+  words_per_burst?: number | null;
   assigned_channel_id?: string | null;
   created_at: string;
   updated_at: string;
