@@ -46,7 +46,10 @@ export class CopilotService {
     `).all() as any[];
 
     const projects = db.prepare(`
-      SELECT id, title, status, clip_count, created_at FROM projects ORDER BY created_at DESC
+      SELECT p.id, p.title, p.status, p.created_at,
+        (SELECT COUNT(*) FROM clips WHERE project_id = p.id) as clip_count
+      FROM projects p
+      ORDER BY p.created_at DESC
     `).all() as any[];
 
     const clips = db.prepare(`
