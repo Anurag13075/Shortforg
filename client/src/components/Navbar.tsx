@@ -18,6 +18,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   activeProjectId,
   health,
+  hasCookies,
+  onOpenCookiesModal,
   onSearchFocus,
   onToggleCopilot
 }) => {
