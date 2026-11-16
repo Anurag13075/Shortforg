@@ -44,9 +44,12 @@ export const CONFIG = {
   }
 };
 
-// Ensure required runtime storage directories exist
+// Ensure required runtime storage and data directories exist
 if (!fs.existsSync(CONFIG.STORAGE_DIR)) {
   fs.mkdirSync(CONFIG.STORAGE_DIR, { recursive: true });
+}
+if (!fs.existsSync(CONFIG.DATA_DIR)) {
+  fs.mkdirSync(CONFIG.DATA_DIR, { recursive: true });
 }
 
 if (!fs.existsSync(CONFIG.DATA_DIR)) {

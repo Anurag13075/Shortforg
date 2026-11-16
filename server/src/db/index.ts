@@ -1,6 +1,13 @@
 import initSqlJs from 'sql.js';
 import fs from 'fs';
+import path from 'path';
 import { CONFIG } from '../config.js';
+
+// Ensure data directory exists
+const dbDir = path.dirname(CONFIG.DB_PATH);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
 
 // Initialize WebAssembly-powered SQLite (Zero C++ native compilation, 100% portable)
 const SQL = await initSqlJs();
@@ -20,6 +27,10 @@ if (fs.existsSync(CONFIG.DB_PATH)) {
 function saveDatabase() {
   if (!rawDb) return;
   try {
+    const dir = path.dirname(CONFIG.DB_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     const data = rawDb.export();
     const buffer = Buffer.from(data);
     fs.writeFileSync(CONFIG.DB_PATH, buffer);
