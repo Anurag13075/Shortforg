@@ -39,8 +39,11 @@ export class CopilotService {
 
     // 1. Gather all studio data context
     const channels = db.prepare(`
-      SELECT id, title, status, total_posted FROM channels ORDER BY created_at ASC
-    `).all() as ChannelRecord[];
+      SELECT c.id, c.title, c.avatar_url, c.status,
+        (SELECT COUNT(*) FROM schedule_queue WHERE channel_id = c.id AND status = 'posted') as total_posted
+      FROM channels c
+      ORDER BY c.created_at ASC
+    `).all() as any[];
 
     const projects = db.prepare(`
       SELECT id, title, status, clip_count, created_at FROM projects ORDER BY created_at DESC
