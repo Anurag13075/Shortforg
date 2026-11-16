@@ -225,6 +225,7 @@ export interface ChannelRecord {
   access_token: string | null;
   token_expiry: number | null;
   status: 'active' | 'reconnect_needed';
+  total_posted?: number;
   created_at: string;
   updated_at: string;
 }

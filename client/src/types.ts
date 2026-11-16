@@ -86,3 +86,25 @@ export interface HealthInfo {
     googleRedirectUri: string;
   };
 }
+
+export interface CopilotAction {
+  type: 'schedule' | 'approve' | 'reject' | 'reschedule' | 'delete_queue';
+  clip_id?: string;
+  clip_title?: string;
+  channel_id?: string;
+  channel_title?: string;
+  scheduled_time?: string;
+  queue_id?: string;
+  virality_score?: number;
+  reason?: string;
+}
+
+export interface CopilotMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  actions?: CopilotAction[];
+  summary?: string;
+  executed?: boolean;
+  timestamp: string;
+}

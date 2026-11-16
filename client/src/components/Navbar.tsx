@@ -1,13 +1,14 @@
 import React from 'react';
-import { Layers, Film, Calendar, Terminal, Search } from 'lucide-react';
+import { Layers, Film, Calendar, Terminal, Search, Bot } from 'lucide-react';
 import { HealthInfo } from '../types';
 
 interface NavbarProps {
-  currentTab: 'home' | 'project' | 'schedule';
-  onSelectTab: (tab: 'home' | 'project' | 'schedule') => void;
+  currentTab: 'home' | 'project' | 'schedule' | 'copilot';
+  onSelectTab: (tab: 'home' | 'project' | 'schedule' | 'copilot') => void;
   activeProjectId: string | null;
   health: HealthInfo | null;
   onSearchFocus?: () => void;
+  onToggleCopilot?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -15,7 +16,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab,
   activeProjectId,
   health,
-  onSearchFocus
+  onSearchFocus,
+  onToggleCopilot
 }) => {
   const hasFfmpegIssue = health && !health.ffmpeg.available;
 
@@ -52,7 +54,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       <nav className="flex lg:hidden items-center p-1 rounded-lg bg-[#111218] border border-white/[0.08]">
         <button
           onClick={() => onSelectTab('home')}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
             currentTab === 'home'
               ? 'bg-zinc-800 text-white font-semibold shadow-sm'
               : 'text-zinc-400 hover:text-white'
@@ -65,7 +67,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         {activeProjectId && (
           <button
             onClick={() => onSelectTab('project')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
               currentTab === 'project'
                 ? 'bg-zinc-800 text-white font-semibold shadow-sm'
                 : 'text-zinc-400 hover:text-white'
@@ -78,7 +80,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         <button
           onClick={() => onSelectTab('schedule')}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
             currentTab === 'schedule'
               ? 'bg-zinc-800 text-white font-semibold shadow-sm'
               : 'text-zinc-400 hover:text-white'
@@ -87,10 +89,34 @@ export const Navbar: React.FC<NavbarProps> = ({
           <Calendar className="w-3.5 h-3.5" />
           <span>Queue</span>
         </button>
+
+        <button
+          onClick={() => onSelectTab('copilot')}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+            currentTab === 'copilot'
+              ? 'bg-zinc-800 text-white font-semibold shadow-sm'
+              : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          <Bot className="w-3.5 h-3.5 text-blue-400" />
+          <span>Copilot</span>
+        </button>
       </nav>
 
-      {/* System Status Pill */}
-      <div className="flex items-center gap-3">
+      {/* Right Action Bar: Copilot Toggle & Status */}
+      <div className="flex items-center gap-2.5">
+        <button
+          onClick={onToggleCopilot || (() => onSelectTab('copilot'))}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#111218] hover:bg-[#161722] border border-white/[0.08] text-xs font-mono text-zinc-300 hover:text-white transition-all shadow-sm cursor-pointer group"
+          title="Toggle Master Scheduling Copilot"
+        >
+          <Bot className="w-3.5 h-3.5 text-blue-400 group-hover:scale-110 transition-transform" />
+          <span className="hidden sm:inline font-medium">Copilot</span>
+          <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400">
+            AI
+          </span>
+        </button>
+
         {hasFfmpegIssue ? (
           <div
             title={health?.ffmpeg.message}

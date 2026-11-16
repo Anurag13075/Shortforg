@@ -6,13 +6,14 @@ import {
   Youtube,
   Plus,
   Terminal,
-  Cpu
+  Cpu,
+  Bot
 } from 'lucide-react';
 import { HealthInfo, Channel } from '../types';
 
 interface SidebarProps {
-  currentTab: 'home' | 'project' | 'schedule';
-  onSelectTab: (tab: 'home' | 'project' | 'schedule') => void;
+  currentTab: 'home' | 'project' | 'schedule' | 'copilot';
+  onSelectTab: (tab: 'home' | 'project' | 'schedule' | 'copilot') => void;
   activeProjectId: string | null;
   channels: Channel[];
   health: HealthInfo | null;
@@ -95,6 +96,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <Calendar className="w-4 h-4" />
             <span>Publishing & Queue</span>
+          </button>
+
+          <button
+            onClick={() => onSelectTab('copilot')}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+              currentTab === 'copilot'
+                ? 'bg-zinc-800 text-white font-semibold shadow-sm'
+                : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Bot className="w-4 h-4 text-blue-400" />
+              <span>Studio Copilot</span>
+            </div>
+            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400 font-semibold">
+              Master
+            </span>
           </button>
         </div>
 

@@ -4,23 +4,24 @@ import { Navbar } from './components/Navbar';
 import { HomePage } from './pages/HomePage';
 import { ProjectPage } from './pages/ProjectPage';
 import { SchedulePage } from './pages/SchedulePage';
+import { StudioCopilot } from './components/StudioCopilot';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { HealthInfo, Channel } from './types';
 import { api } from './api';
 
 export function App() {
   // Initialize tab and project from URL query or localStorage
-  const [currentTab, setCurrentTab] = useState<'home' | 'project' | 'schedule'>(() => {
+  const [currentTab, setCurrentTab] = useState<'home' | 'project' | 'schedule' | 'copilot'>(() => {
     const params = new URLSearchParams(window.location.search);
     if (window.location.pathname.includes('/schedule') || params.has('auth')) {
       return 'schedule';
     }
     const tabParam = params.get('tab');
-    if (tabParam === 'home' || tabParam === 'project' || tabParam === 'schedule') {
+    if (tabParam === 'home' || tabParam === 'project' || tabParam === 'schedule' || tabParam === 'copilot') {
       return tabParam;
     }
     const cached = localStorage.getItem('shortsforge_tab');
-    if (cached === 'project' || cached === 'schedule') {
+    if (cached === 'project' || cached === 'schedule' || cached === 'copilot') {
       return cached;
     }
     return 'home';
@@ -32,6 +33,9 @@ export function App() {
     if (pParam) return pParam;
     return localStorage.getItem('shortsforge_active_project_id');
   });
+
+  // Slide-over Copilot drawer state
+  const [isCopilotDrawerOpen, setIsCopilotDrawerOpen] = useState(false);
 
   // Initialize channels from localStorage cache to prevent empty flicker across tabs
   const [channels, setChannels] = useState<Channel[]>(() => {
@@ -70,7 +74,7 @@ export function App() {
   };
 
   // Sync tab and project state to localStorage and history URL
-  const handleSelectTab = (tab: 'home' | 'project' | 'schedule') => {
+  const handleSelectTab = (tab: 'home' | 'project' | 'schedule' | 'copilot') => {
     setCurrentTab(tab);
     localStorage.setItem('shortsforge_tab', tab);
 
@@ -139,6 +143,7 @@ export function App() {
           onSelectTab={handleSelectTab}
           activeProjectId={activeProjectId}
           health={health}
+          onToggleCopilot={() => setIsCopilotDrawerOpen((prev) => !prev)}
         />
 
         {/* Content Viewport */}
@@ -176,7 +181,18 @@ export function App() {
             <SchedulePage
               channels={channels}
               onRefreshChannels={refreshChannels}
+              onNavigateToCopilot={() => handleSelectTab('copilot')}
               onToast={addToast}
+            />
+          )}
+
+          {currentTab === 'copilot' && (
+            <StudioCopilot
+              channels={channels}
+              onNavigateToSchedule={() => handleSelectTab('schedule')}
+              onRefreshChannels={refreshChannels}
+              onToast={addToast}
+              isFullPage={true}
             />
           )}
         </main>
@@ -185,10 +201,33 @@ export function App() {
         <footer className="border-t border-white/[0.05] py-5 px-8 text-center bg-[#090a0f]">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-zinc-500 text-[11px] font-mono">
             <p>© ShortsForge Studio • Designed for high-retention vertical content</p>
-            <p>Groq Whisper & LLM • Native FFmpeg Engine</p>
+            <p>Groq Whisper & 120B Copilot • Native FFmpeg Engine</p>
           </div>
         </footer>
       </div>
+
+      {/* Slide-over Copilot Drawer (Accessible from ANY page) */}
+      {isCopilotDrawerOpen && (
+        <div className="fixed inset-0 z-50 flex justify-end animate-fade-in">
+          <div
+            onClick={() => setIsCopilotDrawerOpen(false)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+          />
+          <div className="relative w-full max-w-xl bg-[#090a0f] border-l border-white/[0.1] h-full shadow-2xl flex flex-col z-10 animate-slide-left">
+            <StudioCopilot
+              channels={channels}
+              onNavigateToSchedule={() => {
+                setIsCopilotDrawerOpen(false);
+                handleSelectTab('schedule');
+              }}
+              onRefreshChannels={refreshChannels}
+              onToast={addToast}
+              isOpenDrawer={true}
+              onCloseDrawer={() => setIsCopilotDrawerOpen(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Floating Island Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

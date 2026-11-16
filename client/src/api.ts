@@ -110,5 +110,54 @@ export const api = {
     return () => {
       eventSource.close();
     };
+  },
+
+  // Copilot API
+  sendCopilotMessage: async (
+    message: string,
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    autoExecute?: boolean
+  ): Promise<{
+    reply: string;
+    actions: import('./types').CopilotAction[];
+    summary?: string;
+    executed?: boolean;
+    executionMessage?: string;
+  }> => {
+    const res = await request<{
+      success: boolean;
+      data: {
+        reply: string;
+        actions: import('./types').CopilotAction[];
+        summary?: string;
+        executed?: boolean;
+        executionMessage?: string;
+      };
+    }>('/api/copilot/message', {
+      method: 'POST',
+      body: JSON.stringify({ message, history, autoExecute })
+    });
+    return res.data;
+  },
+
+  executeCopilotActions: async (
+    actions: import('./types').CopilotAction[]
+  ): Promise<{
+    success: boolean;
+    executedCount: number;
+    message: string;
+  }> => {
+    const res = await request<{
+      success: boolean;
+      data: {
+        success: boolean;
+        executedCount: number;
+        message: string;
+      };
+    }>('/api/copilot/execute', {
+      method: 'POST',
+      body: JSON.stringify({ actions })
+    });
+    return res.data;
   }
 };

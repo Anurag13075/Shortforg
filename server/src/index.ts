@@ -16,6 +16,7 @@ import { clipsRouter } from './routes/clips.js';
 import { channelsRouter } from './routes/channels.js';
 import { scheduleRouter } from './routes/schedule.js';
 import { authRouter } from './routes/auth.js';
+import { copilotRouter } from './routes/copilot.js';
 
 const app = express();
 
@@ -74,6 +75,7 @@ app.use('/api/projects', projectsRouter);
 app.use('/api/clips', clipsRouter);
 app.use('/api/channels', channelsRouter);
 app.use('/api/schedule', scheduleRouter);
+app.use('/api/copilot', copilotRouter);
 app.use('/auth', authRouter);
 
 // Health & System Info

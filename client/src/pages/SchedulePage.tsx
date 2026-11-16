@@ -14,7 +14,8 @@ import {
   Send,
   Filter,
   Layers,
-  ChevronDown
+  ChevronDown,
+  Bot
 } from 'lucide-react';
 import { Channel, QueueItem, Clip, Project } from '../types';
 import { api } from '../api';
@@ -22,12 +23,14 @@ import { api } from '../api';
 interface SchedulePageProps {
   channels: Channel[];
   onRefreshChannels: () => Promise<void>;
+  onNavigateToCopilot?: () => void;
   onToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 export const SchedulePage: React.FC<SchedulePageProps> = ({
   channels,
   onRefreshChannels,
+  onNavigateToCopilot,
   onToast
 }) => {
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -321,6 +324,30 @@ export const SchedulePage: React.FC<SchedulePageProps> = ({
           </div>
         )}
       </section>
+
+      {/* COPILOT BANNER CALLOUT */}
+      {onNavigateToCopilot && (
+        <div className="p-3.5 rounded-xl bg-[#111218] border border-blue-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/25 flex items-center justify-center shrink-0">
+              <Bot className="w-4 h-4 text-blue-400" />
+            </div>
+            <div>
+              <h4 className="text-xs font-semibold text-white">Need multi-day batch scheduling?</h4>
+              <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
+                Tell Master Copilot e.g. "Schedule all approved clips for next 4 days at 10 AM & 6 PM"
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onNavigateToCopilot}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-all shrink-0 cursor-pointer shadow"
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span>Ask Master Copilot</span>
+          </button>
+        </div>
+      )}
 
       {/* SECTION 2: SCHEDULING CONTROLS (MANUAL & AUTO) */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
