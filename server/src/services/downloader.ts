@@ -106,12 +106,23 @@ async function runYtDlpWithClient(
   const outputTemplate = path.join(outputDir, `source_${timestamp}_%(title).40s.%(ext)s`);
 
   return new Promise((resolve, reject) => {
-    // Check if optional cookies file exists
-    const cookiesFilePath = path.join(outputDir, '../cookies.txt');
-    const hasCookies = fs.existsSync(cookiesFilePath);
+    // Check if optional cookies file exists or was provided via env
+    const cookiesStoragePath = path.join(CONFIG.STORAGE_DIR, 'cookies.txt');
+    if (!fs.existsSync(cookiesStoragePath) && process.env.YOUTUBE_COOKIES) {
+      try {
+        fs.writeFileSync(cookiesStoragePath, process.env.YOUTUBE_COOKIES, 'utf-8');
+      } catch {}
+    }
+
+    const localCookies = path.resolve(process.cwd(), 'cookies.txt');
+    const relativeCookies = path.join(outputDir, '../cookies.txt');
+    const activeCookies = fs.existsSync(cookiesStoragePath)
+      ? cookiesStoragePath
+      : (fs.existsSync(relativeCookies) ? relativeCookies : (fs.existsSync(localCookies) ? localCookies : null));
 
     const args = [
-      '-f', 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+      '--js-runtimes', 'node',
+      '-f', 'best[ext=mp4]/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
       '--merge-output-format', 'mp4',
       '--extractor-args', `youtube:player_client=${playerClient}`,
       '--no-playlist',
@@ -124,8 +135,8 @@ async function runYtDlpWithClient(
       '-o', outputTemplate
     ];
 
-    if (hasCookies) {
-      args.push('--cookies', cookiesFilePath);
+    if (activeCookies) {
+      args.push('--cookies', activeCookies);
     }
 
     args.push(youtubeUrl);
@@ -382,8 +393,8 @@ export async function downloadYouTubeVideo(
   // 2. Self-Hosted yt-dlp Engine with multi-client spoofing
   const ytDlpCmd = await ensureYtDlpBinary();
 
-  // Try iOS client first (bypasses web bot checks), then android, then mweb
-  const clientsToTry = ['ios', 'android', 'mweb'];
+  // Try android,web with Node.js n-challenge solver (bypasses bot verification and extracts formats), then android, then tv
+  const clientsToTry = ['android,web', 'android', 'tv,android', 'web'];
   let lastYtDlpError: string = '';
 
   for (const client of clientsToTry) {
