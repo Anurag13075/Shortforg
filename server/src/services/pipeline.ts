@@ -96,32 +96,47 @@ export class PipelineService {
 
     try {
       // ----------------------------------------------------------------------
-      // STEP 1: DOWNLOAD VIDEO
+      // STEP 1: PREPARE SOURCE VIDEO (DOWNLOAD OR DIRECT FILE)
       // ----------------------------------------------------------------------
-      this.notifyProgress(projectId, 'downloading', 5, 'Downloading video via Vid Kraken...');
+      let sourceVideoPath = project.source_video_path;
+      let duration = project.duration;
+      let title = project.title || 'Source Video';
 
-      const downloadResult = await downloadYouTubeVideo(
-        project.youtube_url,
-        projectDir,
-        (progress, msg) => {
-          this.notifyProgress(projectId, 'downloading', Math.min(30, Math.round(progress * 0.3)), msg);
+      if (sourceVideoPath && fs.existsSync(sourceVideoPath)) {
+        this.notifyProgress(projectId, 'downloading', 30, 'Video file ready for processing...');
+        if (!duration || duration <= 0) {
+          try {
+            const meta = await FFmpegService.getVideoMetadata(sourceVideoPath);
+            duration = meta.duration;
+          } catch {}
         }
-      );
+      } else {
+        this.notifyProgress(projectId, 'downloading', 5, 'Downloading video stream...');
+        const downloadResult = await downloadYouTubeVideo(
+          project.youtube_url,
+          projectDir,
+          (progress, msg) => {
+            this.notifyProgress(projectId, 'downloading', Math.min(30, Math.round(progress * 0.3)), msg);
+          }
+        );
 
-      // Probe duration if not returned
-      let duration = downloadResult.duration;
-      if (!duration || duration <= 0) {
-        try {
-          const meta = await FFmpegService.getVideoMetadata(downloadResult.filePath);
-          duration = meta.duration;
-        } catch {}
+        sourceVideoPath = downloadResult.filePath;
+        title = downloadResult.title;
+        duration = downloadResult.duration;
+
+        if (!duration || duration <= 0) {
+          try {
+            const meta = await FFmpegService.getVideoMetadata(sourceVideoPath);
+            duration = meta.duration;
+          } catch {}
+        }
+
+        db.prepare(`
+          UPDATE projects
+          SET title = ?, duration = ?, source_video_path = ?, updated_at = ?
+          WHERE id = ?
+        `).run(title, duration, sourceVideoPath, new Date().toISOString(), projectId);
       }
-
-      db.prepare(`
-        UPDATE projects
-        SET title = ?, duration = ?, source_video_path = ?, updated_at = ?
-        WHERE id = ?
-      `).run(downloadResult.title, duration, downloadResult.filePath, new Date().toISOString(), projectId);
 
       // ----------------------------------------------------------------------
       // STEP 2: EXTRACT AUDIO & TRANSCRIBE (GROQ WHISPER)
@@ -129,7 +144,7 @@ export class PipelineService {
       this.notifyProgress(projectId, 'transcribing', 35, 'Extracting audio for Whisper transcription...');
 
       const audioPath = path.join(projectDir, 'audio_extracted.mp3');
-      await FFmpegService.extractAudio(downloadResult.filePath, audioPath);
+      await FFmpegService.extractAudio(sourceVideoPath!, audioPath);
 
       this.notifyProgress(projectId, 'transcribing', 42, 'Transcribing with Groq Whisper (word timestamps)...');
       const transcription = await transcribeAudio(audioPath);
@@ -195,7 +210,7 @@ export class PipelineService {
         // 2. Render 9:16 cropped clip with FFmpeg
         const videoOutputPath = path.join(projectDir, `short_${i + 1}_${clipId.substring(0, 8)}.mp4`);
         await FFmpegService.renderClip({
-          sourceVideoPath: downloadResult.filePath,
+          sourceVideoPath: sourceVideoPath!,
           startTime: moment.start,
           endTime: moment.end,
           cropOffsetXPercent: 0, // default center crop
@@ -208,7 +223,7 @@ export class PipelineService {
         const frameTimestamp = Math.min(moment.end, moment.start + 1.8);
         try {
           await FFmpegService.generateThumbnail({
-            sourceVideoPath: downloadResult.filePath,
+            sourceVideoPath: sourceVideoPath!,
             captureTime: frameTimestamp,
             hookText: moment.hook_line,
             cropOffsetXPercent: 0,

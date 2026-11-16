@@ -58,12 +58,66 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ youtubeUrl })
   }),
+  uploadVideoFile: async (file: File): Promise<Project> => {
+    const res = await fetch(`/api/projects/upload?filename=${encodeURIComponent(file.name)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': file.type || 'video/mp4'
+      },
+      body: file
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.error || `Upload failed: ${res.statusText}`);
+    }
+    return json.data !== undefined ? json.data : json;
+  },
   deleteProject: (id: string) => request<{ success: boolean; message: string }>(`/api/projects/${id}`, {
     method: 'DELETE'
   }),
   retryProject: (id: string) => request<Project>(`/api/projects/${id}/retry`, {
     method: 'POST'
   }),
+
+  // Cookies Vault API
+  getCookiesStatus: async () => {
+    try {
+      const res = await request<{ hasCookies: boolean; cookieCount: number; cookiePath: string }>('/api/cookies');
+      // If server does not have cookies but client has cached cookies, auto sync!
+      if (!res.hasCookies) {
+        const cached = localStorage.getItem('sf_youtube_cookies');
+        if (cached && cached.trim().length > 20) {
+          await request('/api/cookies', {
+            method: 'POST',
+            body: JSON.stringify({ cookiesText: cached })
+          });
+          return await request<{ hasCookies: boolean; cookieCount: number; cookiePath: string }>('/api/cookies');
+        }
+      }
+      return res;
+    } catch (e: any) {
+      return { hasCookies: false, cookieCount: 0, cookiePath: '' };
+    }
+  },
+  saveCookies: async (cookiesText: string) => {
+    const res = await request<{ success: boolean; message: string }>('/api/cookies', {
+      method: 'POST',
+      body: JSON.stringify({ cookiesText })
+    });
+    try {
+      localStorage.setItem('sf_youtube_cookies', cookiesText.trim());
+    } catch {}
+    return res;
+  },
+  deleteCookies: async () => {
+    const res = await request<{ success: boolean; message: string }>('/api/cookies', {
+      method: 'DELETE'
+    });
+    try {
+      localStorage.removeItem('sf_youtube_cookies');
+    } catch {}
+    return res;
+  },
 
   // Clips
   getClips: (params?: { status?: string; project_id?: string }) => {

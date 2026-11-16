@@ -5,6 +5,7 @@ import { HomePage } from './pages/HomePage';
 import { ProjectPage } from './pages/ProjectPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { StudioCopilot } from './components/StudioCopilot';
+import { CookieModal } from './components/CookieModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { HealthInfo, Channel } from './types';
 import { api } from './api';
@@ -36,6 +37,15 @@ export function App() {
 
   // Slide-over Copilot drawer state
   const [isCopilotDrawerOpen, setIsCopilotDrawerOpen] = useState(false);
+  const [isCookieModalOpen, setIsCookieModalOpen] = useState(false);
+  const [hasCookies, setHasCookies] = useState(false);
+
+  const checkCookies = async () => {
+    try {
+      const res = await api.getCookiesStatus();
+      setHasCookies(res.hasCookies);
+    } catch {}
+  };
 
   // Initialize channels from localStorage cache to prevent empty flicker across tabs
   const [channels, setChannels] = useState<Channel[]>(() => {
@@ -102,6 +112,7 @@ export function App() {
       });
 
     refreshChannels();
+    checkCookies();
 
     // Cross-tab synchronization via focus and storage events
     const handleStorageChange = (e: StorageEvent) => {
@@ -143,6 +154,8 @@ export function App() {
           onSelectTab={handleSelectTab}
           activeProjectId={activeProjectId}
           health={health}
+          hasCookies={hasCookies}
+          onOpenCookiesModal={() => setIsCookieModalOpen(true)}
           onToggleCopilot={() => setIsCopilotDrawerOpen((prev) => !prev)}
         />
 
@@ -231,6 +244,16 @@ export function App() {
 
       {/* Floating Island Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* YouTube Cookie Vault Modal */}
+      <CookieModal
+        isOpen={isCookieModalOpen}
+        onClose={() => {
+          setIsCookieModalOpen(false);
+          checkCookies();
+        }}
+        onToast={addToast}
+      />
     </div>
   );
 }

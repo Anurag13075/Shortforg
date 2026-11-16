@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db, ProjectRecord, ClipRecord } from '../db/index.js';
 import { PipelineService } from '../services/pipeline.js';
+import { FFmpegService } from '../services/ffmpeg.js';
+import { CONFIG } from '../config.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -108,6 +110,53 @@ projectsRouter.post('/', (req: Request, res: Response) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
+});
+
+/**
+ * POST /api/projects/upload - Direct video file upload (.mp4, .mov, .webm)
+ */
+projectsRouter.post('/upload', async (req: Request, res: Response) => {
+  const projectId = uuidv4();
+  const projectDir = path.join(CONFIG.STORAGE_DIR, projectId);
+  if (!fs.existsSync(projectDir)) {
+    fs.mkdirSync(projectDir, { recursive: true });
+  }
+
+  const rawFilename = (req.query.filename as string) || `video_${Date.now()}.mp4`;
+  const cleanFilename = rawFilename.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const targetPath = path.join(projectDir, cleanFilename);
+
+  const writeStream = fs.createWriteStream(targetPath);
+  req.pipe(writeStream);
+
+  writeStream.on('error', (err) => {
+    console.error('Upload write error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  });
+
+  writeStream.on('finish', async () => {
+    try {
+      const now = new Date().toISOString();
+      const meta = await FFmpegService.getVideoMetadata(targetPath).catch(() => ({ duration: 0 }));
+      const title = path.basename(cleanFilename, path.extname(cleanFilename)).replace(/[_]+/g, ' ').trim();
+
+      db.prepare(`
+        INSERT INTO projects (id, youtube_url, title, duration, source_video_path, status, progress, stage_message, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'pending', 0, 'Video uploaded. Initializing pipeline...', ?, ?)
+      `).run(projectId, `file://${cleanFilename}`, title || 'Uploaded Video', meta.duration || 0, targetPath, now, now);
+
+      setImmediate(() => {
+        PipelineService.runProjectPipeline(projectId).catch((err) => {
+          console.error(`Background pipeline failed for uploaded video ${projectId}:`, err);
+        });
+      });
+
+      const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId) as ProjectRecord;
+      res.status(201).json({ success: true, data: project });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
 });
 
 /**

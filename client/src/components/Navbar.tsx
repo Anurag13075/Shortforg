@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, Film, Calendar, Terminal, Search, Bot } from 'lucide-react';
+import { Layers, Film, Calendar, Terminal, Search, Bot, KeyRound } from 'lucide-react';
 import { HealthInfo } from '../types';
 
 interface NavbarProps {
@@ -7,6 +7,8 @@ interface NavbarProps {
   onSelectTab: (tab: 'home' | 'project' | 'schedule' | 'copilot') => void;
   activeProjectId: string | null;
   health: HealthInfo | null;
+  hasCookies?: boolean;
+  onOpenCookiesModal?: () => void;
   onSearchFocus?: () => void;
   onToggleCopilot?: () => void;
 }
@@ -105,6 +107,28 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Right Action Bar: Copilot Toggle & Status */}
       <div className="flex items-center gap-2.5">
+        {onOpenCookiesModal && (
+          <button
+            onClick={onOpenCookiesModal}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-mono transition-all shadow-sm cursor-pointer ${
+              hasCookies
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
+                : 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
+            }`}
+            title="Configure YouTube Cookies Vault (bypasses bot challenges)"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline font-medium">YT Auth</span>
+            <span className={`text-[9px] px-1 py-0.2 rounded border ${
+              hasCookies
+                ? 'bg-emerald-400/20 text-emerald-200 border-emerald-400/30'
+                : 'bg-amber-400/20 text-amber-200 border-amber-400/30'
+            }`}>
+              {hasCookies ? 'ACTIVE' : 'SETUP'}
+            </span>
+          </button>
+        )}
+
         <button
           onClick={onToggleCopilot || (() => onSelectTab('copilot'))}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#111218] hover:bg-[#161722] border border-white/[0.08] text-xs font-mono text-zinc-300 hover:text-white transition-all shadow-sm cursor-pointer group"

@@ -9,7 +9,9 @@ import {
   RefreshCw,
   Search,
   CheckCircle2,
-  Layers
+  Layers,
+  Upload,
+  FileVideo
 } from 'lucide-react';
 import { Project } from '../types';
 import { api } from '../api';
@@ -22,9 +24,11 @@ interface HomePageProps {
 
 export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) => {
   const [url, setUrl] = useState('');
+  const [inputMode, setInputMode] = useState<'url' | 'upload'>('url');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'processing' | 'failed'>('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -101,6 +105,30 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.includes('video') && !/\.(mp4|mov|webm|m4v)$/i.test(file.name)) {
+      onToast('Please select a valid MP4 or MOV video file', 'error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    onToast(`Uploading "${file.name}" directly to studio...`, 'info');
+    try {
+      const newProj = await api.uploadVideoFile(file);
+      setActiveJobId(newProj.id);
+      onToast('Video uploaded! Groq Whisper is transcribing hooks...', 'success');
+      await fetchProjects();
+    } catch (err: any) {
+      onToast(`Upload failed: ${err.message}`, 'error');
+    } finally {
+      setIsSubmitting(false);
+      e.target.value = '';
+    }
+  };
+
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm('Delete this project and all generated clips?')) return;
@@ -171,49 +199,105 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
           Word-level Groq Whisper timestamps, AI hook extraction, burned-in animated subtitles, and direct multi-channel YouTube scheduling.
         </p>
 
-        {/* Command Bar Input */}
-        <form onSubmit={handleGenerate} className="max-w-xl mx-auto pt-2">
-          <div className="relative flex items-center p-1.5 rounded-xl bg-[#111218] border border-white/[0.08] shadow-lg focus-within:border-white/20 transition-all">
-            <div className="flex items-center gap-2.5 px-3 flex-1 min-w-0">
-              <LinkIcon className="w-4 h-4 text-zinc-500 shrink-0" />
-              <input
-                type="url"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="Paste YouTube video link (e.g. https://youtube.com/watch?v=...)"
-                required
-                className="w-full bg-transparent text-xs text-white placeholder-zinc-500 focus:outline-none py-1.5 font-mono"
-              />
-            </div>
-
+        {/* Mode Switcher: YouTube URL vs Direct Video Upload */}
+        <div className="flex items-center justify-center pt-2">
+          <div className="inline-flex p-1 rounded-xl bg-[#111218] border border-white/[0.08]">
             <button
-              type="submit"
-              disabled={isSubmitting || !url.trim()}
-              className="flex items-center justify-center gap-1.5 px-4 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs rounded-lg shadow-sm transition-all disabled:opacity-40 cursor-pointer shrink-0"
+              type="button"
+              onClick={() => setInputMode('url')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-all ${
+                inputMode === 'url'
+                  ? 'bg-zinc-800 text-white font-semibold shadow-sm'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
             >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : (
-                <span>Forge Shorts</span>
-              )}
+              <LinkIcon className="w-3.5 h-3.5" />
+              <span>YouTube URL</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputMode('upload')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono transition-all ${
+                inputMode === 'upload'
+                  ? 'bg-zinc-800 text-white font-semibold shadow-sm'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Upload className="w-3.5 h-3.5 text-blue-400" />
+              <span>Upload Video File</span>
             </button>
           </div>
-        </form>
-
-        {/* Sample link */}
-        <div className="flex items-center justify-center gap-2 text-xs text-zinc-500 font-mono">
-          <span className="text-[11px] text-zinc-600">Sample:</span>
-          <button
-            type="button"
-            onClick={() => setUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ')}
-            className="px-2 py-0.5 rounded bg-[#111218] hover:bg-zinc-800 border border-white/[0.06] text-zinc-400 hover:text-white transition-colors"
-          >
-            Rick Astley - Never Gonna Give You Up
-          </button>
         </div>
+
+        {/* Command Bar Input (YouTube Mode) */}
+        {inputMode === 'url' ? (
+          <form onSubmit={handleGenerate} className="max-w-xl mx-auto">
+            <div className="relative flex items-center p-1.5 rounded-xl bg-[#111218] border border-white/[0.08] shadow-lg focus-within:border-white/20 transition-all">
+              <div className="flex items-center gap-2.5 px-3 flex-1 min-w-0">
+                <LinkIcon className="w-4 h-4 text-zinc-500 shrink-0" />
+                <input
+                  type="url"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="Paste YouTube video link (e.g. https://youtube.com/watch?v=...)"
+                  required
+                  className="w-full bg-transparent text-xs text-white placeholder-zinc-500 focus:outline-none py-1.5 font-mono"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting || !url.trim()}
+                className="flex items-center justify-center gap-1.5 px-4 py-2 bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs rounded-lg shadow-sm transition-all disabled:opacity-40 cursor-pointer shrink-0"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <span>Forge Shorts</span>
+                )}
+              </button>
+            </div>
+          </form>
+        ) : (
+          /* Direct Video File Upload Mode */
+          <div className="max-w-xl mx-auto">
+            <label className="flex flex-col items-center justify-center p-6 rounded-2xl bg-[#111218] border-2 border-dashed border-white/10 hover:border-blue-500/40 cursor-pointer transition-all group">
+              <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                <FileVideo className="w-6 h-6 text-blue-400" />
+              </div>
+              <p className="text-xs font-semibold text-white mb-1">
+                {isSubmitting ? 'Uploading video to studio...' : 'Click to select or drop video file'}
+              </p>
+              <p className="text-[11px] text-zinc-500 font-mono">
+                MP4, MOV, WebM • Direct stream to Groq Whisper & 9:16 renderer
+              </p>
+              <input
+                type="file"
+                accept="video/mp4,video/quicktime,video/webm"
+                onChange={handleFileUpload}
+                disabled={isSubmitting}
+                className="hidden"
+              />
+            </label>
+          </div>
+        )}
+
+        {/* Sample link & Cloud Tips */}
+        {inputMode === 'url' && (
+          <div className="flex items-center justify-center gap-2 text-xs text-zinc-500 font-mono">
+            <span className="text-[11px] text-zinc-600">Sample:</span>
+            <button
+              type="button"
+              onClick={() => setUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ')}
+              className="px-2 py-0.5 rounded bg-[#111218] hover:bg-zinc-800 border border-white/[0.06] text-zinc-400 hover:text-white transition-colors"
+            >
+              Rick Astley - Never Gonna Give You Up
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Live Active Job Progress */}

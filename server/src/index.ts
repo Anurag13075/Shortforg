@@ -17,6 +17,7 @@ import { channelsRouter } from './routes/channels.js';
 import { scheduleRouter } from './routes/schedule.js';
 import { authRouter } from './routes/auth.js';
 import { copilotRouter } from './routes/copilot.js';
+import { cookiesRouter } from './routes/cookies.js';
 
 const app = express();
 
@@ -76,6 +77,7 @@ app.use('/api/clips', clipsRouter);
 app.use('/api/channels', channelsRouter);
 app.use('/api/schedule', scheduleRouter);
 app.use('/api/copilot', copilotRouter);
+app.use('/api/cookies', cookiesRouter);
 app.use('/auth', authRouter);
 
 // Health & System Info
