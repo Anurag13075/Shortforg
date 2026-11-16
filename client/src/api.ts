@@ -125,19 +125,16 @@ export const api = {
     executionMessage?: string;
   }> => {
     const res = await request<{
-      success: boolean;
-      data: {
-        reply: string;
-        actions: import('./types').CopilotAction[];
-        summary?: string;
-        executed?: boolean;
-        executionMessage?: string;
-      };
+      reply: string;
+      actions: import('./types').CopilotAction[];
+      summary?: string;
+      executed?: boolean;
+      executionMessage?: string;
     }>('/api/copilot/message', {
       method: 'POST',
       body: JSON.stringify({ message, history, autoExecute })
     });
-    return res.data;
+    return (res as any)?.data !== undefined ? (res as any).data : res;
   },
 
   executeCopilotActions: async (
@@ -149,15 +146,12 @@ export const api = {
   }> => {
     const res = await request<{
       success: boolean;
-      data: {
-        success: boolean;
-        executedCount: number;
-        message: string;
-      };
+      executedCount: number;
+      message: string;
     }>('/api/copilot/execute', {
       method: 'POST',
       body: JSON.stringify({ actions })
     });
-    return res.data;
+    return (res as any)?.data !== undefined ? (res as any).data : res;
   }
 };

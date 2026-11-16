@@ -102,10 +102,10 @@ export const StudioCopilot: React.FC<StudioCopilotProps> = ({
       const assistantMsg: CopilotMessage = {
         id: `${Date.now()}_assistant`,
         role: 'assistant',
-        content: res.reply,
-        actions: res.actions,
-        summary: res.summary,
-        executed: res.executed,
+        content: res?.reply || res?.summary || 'I have analyzed your request and prepared the scheduling actions.',
+        actions: res?.actions || [],
+        summary: res?.summary,
+        executed: res?.executed,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
