@@ -22,73 +22,60 @@ let cachedYtDlpPath: string | null = null;
  * 2. Checks standard PATH
  * 3. Downloads standalone official binary from GitHub releases if missing
  */
+function isValidYtDlpCommand(cmd: string): boolean {
+  try {
+    const res = execSync(`${cmd} --version`, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 6000 }).toString();
+    return res.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Ensures a working yt-dlp executable or Python module is available.
+ * 1. Checks 'python3 -m yt_dlp' (pure Python, 100% native on Alpine Linux & musl)
+ * 2. Checks standard PATH 'yt-dlp'
+ * 3. Checks standard Linux /usr/bin and /usr/local/bin
+ * 4. Checks local ./bin/yt-dlp
+ */
 export async function ensureYtDlpBinary(): Promise<string> {
-  if (cachedYtDlpPath && fs.existsSync(cachedYtDlpPath)) {
+  if (cachedYtDlpPath && isValidYtDlpCommand(cachedYtDlpPath)) {
     return cachedYtDlpPath;
   }
 
-  // 1. Check local bin directory inside application root (always prefer latest official release)
-  const binDir = path.resolve(__dirname, '../../../bin');
-  const binaryName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
-  const localBinary = path.join(binDir, binaryName);
-
-  if (fs.existsSync(localBinary)) {
-    cachedYtDlpPath = localBinary;
-    return localBinary;
+  // 1. Check Python module (highest reliability on Alpine containers)
+  if (isValidYtDlpCommand('python3 -m yt_dlp')) {
+    cachedYtDlpPath = 'python3 -m yt_dlp';
+    return cachedYtDlpPath;
   }
 
-  // 2. Check standard Linux / PATH locations
+  // 2. Check standard PATH
+  if (isValidYtDlpCommand('yt-dlp')) {
+    cachedYtDlpPath = 'yt-dlp';
+    return cachedYtDlpPath;
+  }
+
+  // 3. Check standard Linux / PATH locations
   const standardPaths = ['/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp'];
   for (const p of standardPaths) {
-    if (fs.existsSync(p)) {
+    if (fs.existsSync(p) && isValidYtDlpCommand(p)) {
       cachedYtDlpPath = p;
       return p;
     }
   }
 
-  try {
-    execSync('yt-dlp --version', { stdio: 'ignore' });
-    cachedYtDlpPath = 'yt-dlp';
-    return 'yt-dlp';
-  } catch {}
+  // 4. Check local bin directory inside application root
+  const binDir = path.resolve(__dirname, '../../../bin');
+  const binaryName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+  const localBinary = path.join(binDir, binaryName);
 
-  // 3. Download standalone official binary from GitHub releases
-  console.log(`⬇️ Downloading latest standalone yt-dlp binary for ${process.platform}...`);
-  if (!fs.existsSync(binDir)) {
-    fs.mkdirSync(binDir, { recursive: true });
-  }
-
-  const downloadUrl = process.platform === 'win32'
-    ? 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'
-    : 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp';
-
-  try {
-    const writer = fs.createWriteStream(localBinary);
-    const response = await axios({
-      method: 'GET',
-      url: downloadUrl,
-      responseType: 'stream',
-      timeout: 120000
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      response.data.pipe(writer);
-      writer.on('finish', () => resolve());
-      writer.on('error', (err) => reject(err));
-    });
-
-    if (process.platform !== 'win32') {
-      fs.chmodSync(localBinary, 0o755);
-    }
-
-    console.log(`✅ Latest official yt-dlp binary ready at ${localBinary}`);
+  if (fs.existsSync(localBinary) && isValidYtDlpCommand(localBinary)) {
     cachedYtDlpPath = localBinary;
     return localBinary;
-  } catch (err: any) {
-    console.warn('Failed to download standalone yt-dlp from GitHub, using system PATH fallback:', err.message);
-    cachedYtDlpPath = 'yt-dlp';
-    return 'yt-dlp';
   }
+
+  cachedYtDlpPath = 'yt-dlp';
+  return 'yt-dlp';
 }
 
 /**
@@ -141,7 +128,8 @@ async function runYtDlpWithClient(
 
     args.push(youtubeUrl);
 
-    const child = spawn(ytDlpCmd, args);
+    const [bin, ...extraArgs] = ytDlpCmd.split(' ');
+    const child = spawn(bin, [...extraArgs, ...args]);
     let stdout = '';
     let stderr = '';
 

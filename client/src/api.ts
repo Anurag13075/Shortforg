@@ -22,8 +22,37 @@ export const api = {
   // System Health
   getHealth: () => request<HealthInfo>('/api/health'),
 
-  // Projects
-  getProjects: () => request<Project[]>('/api/projects'),
+  // Projects (with automated client vault persistence across redeployments)
+  getProjects: async () => {
+    try {
+      const projects = await request<Project[]>('/api/projects');
+      if (Array.isArray(projects) && projects.length > 0) {
+        try {
+          localStorage.setItem('sf_projects_vault', JSON.stringify(projects));
+        } catch {}
+        return projects;
+      }
+      // If server returned 0 projects, check if client vault has backup
+      const cached = localStorage.getItem('sf_projects_vault');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          await request<{ success: boolean; synced: number }>('/api/projects/sync', {
+            method: 'POST',
+            body: JSON.stringify({ projects: parsed })
+          });
+          return await request<Project[]>('/api/projects');
+        }
+      }
+      return projects;
+    } catch (e) {
+      const cached = localStorage.getItem('sf_projects_vault');
+      if (cached) {
+        try { return JSON.parse(cached); } catch {}
+      }
+      throw e;
+    }
+  },
   getProject: (id: string) => request<Project & { clips: Clip[] }>(`/api/projects/${id}`),
   createProject: (youtubeUrl: string) => request<Project>('/api/projects', {
     method: 'POST',
@@ -78,11 +107,56 @@ export const api = {
   getThumbnailUrl: (clipId: string) => `/api/clips/${clipId}/thumbnail`,
   getDownloadUrl: (clipId: string) => `/api/clips/${clipId}/download`,
 
-  // Channels
-  getChannels: () => request<Channel[]>('/api/channels'),
-  deleteChannel: (id: string) => request<{ success: boolean; message: string }>(`/api/channels/${id}`, {
-    method: 'DELETE'
-  }),
+  // Channels (with automated client vault persistence across redeployments)
+  getChannels: async () => {
+    try {
+      const channels = await request<Channel[]>('/api/channels');
+      if (Array.isArray(channels) && channels.length > 0) {
+        try {
+          localStorage.setItem('sf_channels_vault', JSON.stringify(channels));
+        } catch {}
+        return channels;
+      }
+      // If server returned 0 channels (e.g. after a fresh container deploy), auto-sync from client vault
+      const cached = localStorage.getItem('sf_channels_vault');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          await request<{ success: boolean; synced: number }>('/api/channels/sync', {
+            method: 'POST',
+            body: JSON.stringify({ channels: parsed })
+          });
+          return await request<Channel[]>('/api/channels');
+        }
+      }
+      return channels;
+    } catch (e) {
+      const cached = localStorage.getItem('sf_channels_vault');
+      if (cached) {
+        try { return JSON.parse(cached); } catch {}
+      }
+      throw e;
+    }
+  },
+  deleteChannel: async (id: string) => {
+    try {
+      const res = await request<{ success: boolean; message: string }>(`/api/channels/${id}`, {
+        method: 'DELETE'
+      });
+      // Also update local vault
+      try {
+        const cached = localStorage.getItem('sf_channels_vault');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          const filtered = parsed.filter((c: any) => c.id !== id);
+          localStorage.setItem('sf_channels_vault', JSON.stringify(filtered));
+        }
+      } catch {}
+      return res;
+    } catch (e) {
+      throw e;
+    }
+  },
 
   // Scheduling
   getSchedule: () => request<QueueItem[]>('/api/schedule'),

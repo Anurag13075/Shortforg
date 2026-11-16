@@ -27,6 +27,49 @@ projectsRouter.get('/', (_req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/projects/sync - Restore projects from client vault (preserves projects across container redeployments)
+ */
+projectsRouter.post('/sync', (req: Request, res: Response) => {
+  const { projects } = req.body;
+  if (!Array.isArray(projects) || projects.length === 0) {
+    return res.json({ success: true, synced: 0 });
+  }
+
+  const now = new Date().toISOString();
+  let synced = 0;
+
+  for (const p of projects) {
+    if (!p.id || !p.youtube_url) continue;
+    try {
+      const existing = db.prepare('SELECT id FROM projects WHERE id = ?').get(p.id);
+      if (!existing) {
+        db.prepare(`
+          INSERT INTO projects (id, youtube_url, title, duration, source_video_path, status, progress, stage_message, error_message, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          p.id,
+          p.youtube_url,
+          p.title || null,
+          p.duration || 0,
+          p.source_video_path || null,
+          p.status || 'failed',
+          p.progress || 0,
+          p.stage_message || '',
+          p.error_message || null,
+          p.created_at || now,
+          p.updated_at || now
+        );
+        synced++;
+      }
+    } catch (err: any) {
+      console.warn('Project sync error:', err.message);
+    }
+  }
+
+  res.json({ success: true, synced });
+});
+
+/**
  * POST /api/projects - Create a new project and kick off background processing
  */
 projectsRouter.post('/', (req: Request, res: Response) => {

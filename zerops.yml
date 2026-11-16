@@ -20,9 +20,9 @@ zerops:
     run:
       base: nodejs@22
       prepareCommands:
-        # Install FFmpeg, fonts, python3, and latest official yt-dlp binary
-        - apk add --no-cache ffmpeg ttf-dejavu fontconfig python3 curl ca-certificates || true
-        - curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && chmod a+rx /usr/local/bin/yt-dlp || true
+        # Install FFmpeg, fonts, gcompat, python3, pip, and pure-Python yt-dlp natively on Alpine
+        - apk add --no-cache ffmpeg ttf-dejavu fontconfig python3 py3-pip gcompat curl ca-certificates || true
+        - python3 -m pip install --no-cache-dir --break-system-packages -U yt-dlp || pip3 install --no-cache-dir -U yt-dlp || apk add --no-cache yt-dlp || true
       start: node server/dist/index.js
       ports:
         - port: 3001
