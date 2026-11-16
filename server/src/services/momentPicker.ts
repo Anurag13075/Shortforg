@@ -32,11 +32,11 @@ export async function pickViralMoments(
   const groq = new Groq({ apiKey });
 
   // Format transcript segments with timestamps to guide the LLM.
-  // Dynamically budget tokens to never exceed Groq's Input Tokens Per Minute (ITPM) limits.
+  // Strictly budget tokens to stay under Groq's 7,000-8,000 Input Tokens Per Minute (ITPM) limit.
   const totalWords = words.length;
   let chunkSize = 35;
-  if (totalWords > 1200) chunkSize = 55;
-  if (totalWords > 2500) chunkSize = 75;
+  if (totalWords > 800) chunkSize = 50;
+  if (totalWords > 1800) chunkSize = 65;
 
   const rawSlices: { start: string; end: string; text: string }[] = [];
   for (let i = 0; i < words.length; i += chunkSize) {
@@ -47,11 +47,11 @@ export async function pickViralMoments(
     rawSlices.push({ start, end, text });
   }
 
-  // If transcript is long, evenly sample candidate chunks across the full timeline
-  // to ensure prompt payload stays well within safe token boundaries (<3,500 tokens).
+  // If transcript is long, sample at most 22 chunks across the video timeline.
+  // 22 chunks * ~60 words = ~1,300 words (~1,700 tokens), well under Groq's 7,000 ITPM limit.
   let selectedSlices = rawSlices;
-  if (rawSlices.length > 35) {
-    const maxChunks = 35;
+  if (rawSlices.length > 22) {
+    const maxChunks = 22;
     const step = rawSlices.length / maxChunks;
     selectedSlices = [];
     for (let i = 0; i < maxChunks; i++) {
@@ -107,10 +107,9 @@ Analyze this timestamped transcript and select ${targetCount} top viral standalo
 ${timestampedChunks.join('\n\n')}`;
 
   const candidateModels = [
-    'llama-3.3-70b-versatile',
-    'llama-3.1-8b-instant',
-    'mixtral-8x7b-32768',
-    'gemma2-9b-it'
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'qwen/qwen3.8-27b'
   ];
 
   let completion: any;
@@ -254,9 +253,9 @@ RETURN STRICT JSON:
 }`;
 
   const candidateModels = [
-    'llama-3.3-70b-versatile',
-    'llama-3.1-8b-instant',
-    'mixtral-8x7b-32768'
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'qwen/qwen3.8-27b'
   ];
 
   let completion: any;
