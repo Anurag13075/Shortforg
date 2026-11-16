@@ -31,16 +31,36 @@ export async function pickViralMoments(
 
   const groq = new Groq({ apiKey });
 
-  // Format transcript segments with timestamps to guide the LLM
-  const timestampedChunks: string[] = [];
-  const chunkSize = 25; // ~25 words per interval
+  // Format transcript segments with timestamps to guide the LLM.
+  // Dynamically budget tokens to never exceed Groq's Input Tokens Per Minute (ITPM) limits.
+  const totalWords = words.length;
+  let chunkSize = 35;
+  if (totalWords > 1200) chunkSize = 55;
+  if (totalWords > 2500) chunkSize = 75;
+
+  const rawSlices: { start: string; end: string; text: string }[] = [];
   for (let i = 0; i < words.length; i += chunkSize) {
     const slice = words.slice(i, i + chunkSize);
     const start = slice[0].start.toFixed(1);
     const end = slice[slice.length - 1].end.toFixed(1);
     const text = slice.map((w) => w.word).join(' ');
-    timestampedChunks.push(`[${start}s - ${end}s]: ${text}`);
+    rawSlices.push({ start, end, text });
   }
+
+  // If transcript is long, evenly sample candidate chunks across the full timeline
+  // to ensure prompt payload stays well within safe token boundaries (<3,500 tokens).
+  let selectedSlices = rawSlices;
+  if (rawSlices.length > 35) {
+    const maxChunks = 35;
+    const step = rawSlices.length / maxChunks;
+    selectedSlices = [];
+    for (let i = 0; i < maxChunks; i++) {
+      const idx = Math.min(rawSlices.length - 1, Math.floor(i * step));
+      selectedSlices.push(rawSlices[idx]);
+    }
+  }
+
+  const timestampedChunks = selectedSlices.map((s) => `[${s.start}s - ${s.end}s]: ${s.text}`);
 
   const systemPrompt = `You are an elite YouTube Shorts producer and virality editor.
 Your task is to analyze timestamped video transcripts and extract exactly ${targetCount} of the most viral, standalone moments for 9:16 vertical Shorts.
@@ -87,9 +107,10 @@ Analyze this timestamped transcript and select ${targetCount} top viral standalo
 ${timestampedChunks.join('\n\n')}`;
 
   const candidateModels = [
-    'openai/gpt-oss-120b',
-    'openai/gpt-oss-20b',
-    'qwen/qwen3.8-27b'
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+    'mixtral-8x7b-32768',
+    'gemma2-9b-it'
   ];
 
   let completion: any;
@@ -232,12 +253,31 @@ RETURN STRICT JSON:
   "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"]
 }`;
 
-  const completion = await groq.chat.completions.create({
-    model: 'openai/gpt-oss-120b',
-    messages: [{ role: 'user', content: prompt }],
-    response_format: { type: 'json_object' },
-    temperature: 0.2
-  });
+  const candidateModels = [
+    'llama-3.3-70b-versatile',
+    'llama-3.1-8b-instant',
+    'mixtral-8x7b-32768'
+  ];
+
+  let completion: any;
+  let lastError: any;
+  for (const model of candidateModels) {
+    try {
+      completion = await groq.chat.completions.create({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        response_format: { type: 'json_object' },
+        temperature: 0.2
+      });
+      if (completion?.choices?.[0]?.message?.content) break;
+    } catch (e: any) {
+      lastError = e;
+    }
+  }
+
+  if (!completion?.choices?.[0]?.message?.content) {
+    throw new Error(`Failed to generate clip metadata: ${lastError?.message || 'No response'}`);
+  }
 
   const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
   return {

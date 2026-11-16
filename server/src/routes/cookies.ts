@@ -47,6 +47,14 @@ cookiesRouter.post('/', (req: Request, res: Response) => {
     });
   }
 
+  const hasYoutube = cookiesText.includes('youtube.com') || cookiesText.includes('VISITOR_INFO1_LIVE');
+  if (!hasYoutube) {
+    return res.status(400).json({
+      success: false,
+      error: 'The pasted cookies do not contain youtube.com! Make sure you are viewing youtube.com in your browser before clicking the extension icon.'
+    });
+  }
+
   try {
     const cookiePath = path.join(CONFIG.STORAGE_DIR, 'cookies.txt');
     fs.writeFileSync(cookiePath, cookiesText.trim(), 'utf-8');

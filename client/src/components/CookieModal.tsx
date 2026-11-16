@@ -87,6 +87,9 @@ export const CookieModal: React.FC<CookieModalProps> = ({ isOpen, onClose, onToa
     reader.readAsText(file);
   };
 
+  const isYoutubeCookies = cookiesText.includes('youtube.com') || cookiesText.includes('LOGIN_INFO') || cookiesText.includes('VISITOR_INFO1_LIVE');
+  const hasNonYoutubeDomain = cookiesText.trim().length > 30 && !isYoutubeCookies && (cookiesText.includes('.bolt.new') || cookiesText.includes('google.com') || cookiesText.includes('.') && !cookiesText.includes('youtube'));
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-lg bg-[#0e1017] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col">
@@ -128,10 +131,35 @@ export const CookieModal: React.FC<CookieModalProps> = ({ isOpen, onClose, onToa
               <span className="font-mono">
                 {cookieStatus.hasCookies
                   ? `Active: ${cookieStatus.cookieCount} authenticated YouTube cookies loaded`
-                  : 'No cookies loaded. Cloud IPs will encounter bot challenges.'}
+                  : 'No active cookies in vault. Cloud IPs will encounter bot challenges.'}
               </span>
             </div>
           </div>
+
+          {/* Realtime Detection Banner */}
+          {hasNonYoutubeDomain && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-semibold">Wrong Website Cookies Detected!</p>
+                <p className="text-[11px] text-rose-200/90 leading-relaxed">
+                  These cookies appear to be from another tab (e.g. bolt.new). The extension exports cookies for whichever tab you are currently looking at.
+                </p>
+                <p className="text-[11px] text-amber-300 font-medium">
+                  👉 Switch to your <b>YouTube.com</b> tab first, THEN click the "Get cookies.txt" extension icon!
+                </p>
+              </div>
+            </div>
+          )}
+
+          {isYoutubeCookies && (
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="font-mono font-medium">
+                Valid YouTube cookies detected! Click the yellow "Save to Vault" button below.
+              </span>
+            </div>
+          )}
 
           {/* 3-Step Quick Guide */}
           <div className="p-3.5 rounded-xl bg-black/40 border border-white/[0.06] space-y-2 text-xs">
@@ -140,20 +168,24 @@ export const CookieModal: React.FC<CookieModalProps> = ({ isOpen, onClose, onToa
             </span>
             <ol className="list-decimal list-inside space-y-1.5 text-zinc-300 leading-relaxed text-[11px]">
               <li>
-                Install the free Chrome extension{' '}
+                Open a new browser tab and navigate to{' '}
                 <a
-                  href="https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc"
+                  href="https://youtube.com"
                   target="_blank"
                   rel="noreferrer"
-                  className="text-blue-400 hover:underline inline-flex items-center gap-1 font-mono"
+                  className="text-amber-400 font-mono font-bold hover:underline inline-flex items-center gap-1"
                 >
-                  Get cookies.txt LOCALLY <ExternalLink className="w-2.5 h-2.5" />
-                </a>
+                  youtube.com <ExternalLink className="w-2.5 h-2.5" />
+                </a>{' '}
+                (make sure you are signed in).
               </li>
               <li>
-                Open <span className="text-white font-mono">youtube.com</span> in your browser while signed in (burner/secondary account recommended).
+                While on the <span className="text-white font-mono font-semibold">youtube.com</span> tab, click the extension icon{' '}
+                <span className="text-zinc-200 font-mono text-[10px] bg-white/10 px-1 py-0.5 rounded">Get cookies.txt LOCALLY</span>.
               </li>
-              <li>Click the extension icon, copy the text, and paste it below (or upload the file).</li>
+              <li>
+                Copy the text from the popup, come back here, paste it below, and click <span className="text-amber-300 font-bold">"Save to Vault"</span>.
+              </li>
             </ol>
           </div>
 
@@ -172,7 +204,13 @@ export const CookieModal: React.FC<CookieModalProps> = ({ isOpen, onClose, onToa
               value={cookiesText}
               onChange={(e) => setCookiesText(e.target.value)}
               placeholder="# Netscape HTTP Cookie File&#10;.youtube.com	TRUE	/	TRUE	...	LOGIN_INFO	..."
-              className="w-full p-2.5 rounded-xl bg-black/60 border border-white/10 text-xs text-zinc-300 font-mono focus:outline-none focus:border-amber-400/50 resize-none leading-relaxed"
+              className={`w-full p-2.5 rounded-xl bg-black/60 border text-xs font-mono focus:outline-none resize-none leading-relaxed ${
+                hasNonYoutubeDomain
+                  ? 'border-rose-500/50 text-rose-200'
+                  : isYoutubeCookies
+                  ? 'border-emerald-500/50 text-emerald-200'
+                  : 'border-white/10 text-zinc-300 focus:border-amber-400/50'
+              }`}
             />
           </div>
         </div>
