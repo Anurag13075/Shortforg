@@ -85,9 +85,10 @@ scheduleRouter.post('/', (req: Request, res: Response) => {
 
 /**
  * POST /api/schedule/auto - Auto-schedule all approved clips (spread 1-2 per day)
+ * Supports optional project_id filter to schedule from a specific project
  */
 scheduleRouter.post('/auto', (req: Request, res: Response) => {
-  const { channel_id, clips_per_day } = req.body;
+  const { channel_id, clips_per_day, project_id } = req.body;
 
   if (!channel_id) {
     return res.status(400).json({ success: false, error: 'channel_id is required' });
@@ -99,7 +100,11 @@ scheduleRouter.post('/auto', (req: Request, res: Response) => {
   }
 
   try {
-    const result = SchedulerService.autoScheduleApproved(channel_id, clips_per_day ? parseInt(clips_per_day, 10) : 2);
+    const result = SchedulerService.autoScheduleApproved(
+      channel_id,
+      clips_per_day ? parseInt(clips_per_day, 10) : 2,
+      project_id
+    );
     res.json({
       success: true,
       message: `Auto-scheduled ${result.scheduledCount} approved clips.`,

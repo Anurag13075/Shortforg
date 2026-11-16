@@ -1,20 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import {
   ArrowLeft,
-  Sparkles,
   CheckCircle2,
   RefreshCw,
   ExternalLink,
   Calendar,
-  Layers
+  Layers,
+  Clock,
+  Send,
+  Loader2,
+  Youtube
 } from 'lucide-react';
-import { Project, Clip } from '../types';
+import { Project, Clip, Channel } from '../types';
 import { api } from '../api';
 import { ClipCard } from '../components/ClipCard';
 import { ProgressBar } from '../components/ProgressBar';
 
 interface ProjectPageProps {
   projectId: string;
+  channels: Channel[];
   onBack: () => void;
   onNavigateToSchedule: () => void;
   onToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
@@ -22,28 +26,25 @@ interface ProjectPageProps {
 
 export const ProjectPage: React.FC<ProjectPageProps> = ({
   projectId,
+  channels,
   onBack,
   onNavigateToSchedule,
   onToast
 }) => {
   const [project, setProject] = useState<Project | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
-  const [filter, setFilter] = useState<'all' | 'approved' | 'draft' | 'rejected'>('all');
+  const [filter, setFilter] = useState<'all' | 'approved' | 'scheduled' | 'draft' | 'rejected'>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isBulkScheduling, setIsBulkScheduling] = useState(false);
+  const [bulkChannelId, setBulkChannelId] = useState<string>(channels[0]?.id || '');
 
-  const handleRetry = async () => {
-    setIsRetrying(true);
-    try {
-      await api.retryProject(projectId);
-      onToast('Retrying pipeline...', 'info');
-      await fetchProjectDetails();
-    } catch (err: any) {
-      onToast(`Failed to retry: ${err.message}`, 'error');
-    } finally {
-      setIsRetrying(false);
+  // Keep bulkChannelId up to date when channels load
+  useEffect(() => {
+    if (channels.length > 0 && !bulkChannelId) {
+      setBulkChannelId(channels[0].id);
     }
-  };
+  }, [channels, bulkChannelId]);
 
   const fetchProjectDetails = async () => {
     try {
@@ -86,8 +87,45 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
     return () => unsubscribe();
   }, [projectId, project?.status]);
 
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    try {
+      await api.retryProject(projectId);
+      onToast('Retrying pipeline...', 'info');
+      await fetchProjectDetails();
+    } catch (err: any) {
+      onToast(`Failed to retry: ${err.message}`, 'error');
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
   const handleClipUpdate = (updatedClip: Clip) => {
     setClips((prev) => prev.map((c) => (c.id === updatedClip.id ? updatedClip : c)));
+  };
+
+  const handleBulkSchedule = async () => {
+    if (!bulkChannelId) {
+      onToast('Select a destination YouTube channel first', 'error');
+      return;
+    }
+
+    const approvedOnly = clips.filter((c) => c.status === 'approved');
+    if (approvedOnly.length === 0) {
+      onToast('No approved clips to schedule. Click "Approve" on clips first.', 'info');
+      return;
+    }
+
+    setIsBulkScheduling(true);
+    try {
+      const res = await api.autoSchedule(bulkChannelId, 2, projectId);
+      onToast(res.message, 'success');
+      await fetchProjectDetails();
+    } catch (err: any) {
+      onToast(`Bulk schedule failed: ${err.message}`, 'error');
+    } finally {
+      setIsBulkScheduling(false);
+    }
   };
 
   const filteredClips = clips.filter((c) => {
@@ -96,6 +134,10 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
   });
 
   const approvedCount = clips.filter((c) => c.status === 'approved').length;
+  const scheduledCount = clips.filter((c) => c.status === 'scheduled').length;
+  const draftCount = clips.filter((c) => c.status === 'draft').length;
+  const rejectedCount = clips.filter((c) => c.status === 'rejected').length;
+
   const avgVirality =
     clips.length > 0
       ? Math.round(clips.reduce((acc, c) => acc + c.virality_score, 0) / clips.length)
@@ -103,7 +145,7 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-zinc-500 animate-fade-in">
+      <div className="flex flex-col items-center justify-center py-28 text-zinc-500 animate-fade-in">
         <RefreshCw className="w-6 h-6 animate-spin mb-3 text-white" />
         <p className="text-xs font-mono">Loading studio workspace...</p>
       </div>
@@ -112,11 +154,11 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 
   if (!project) {
     return (
-      <div className="text-center py-20 space-y-3">
-        <p className="text-zinc-400 text-sm">Project was removed or not found.</p>
+      <div className="studio-card p-12 text-center max-w-md mx-auto space-y-4">
+        <p className="text-zinc-400 text-xs font-mono">Project was removed or not found.</p>
         <button
           onClick={onBack}
-          className="px-4 py-2 bg-zinc-800 text-white rounded-lg text-xs font-medium"
+          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-medium transition-colors"
         >
           Return Home
         </button>
@@ -132,46 +174,45 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
       {/* Top Header & Breadcrumb */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/[0.06]">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onBack}
-            className="p-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/[0.06] transition-colors"
+            className="p-2 rounded-lg bg-[#111218] hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/[0.08] transition-colors shrink-0"
             title="Back to Projects"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
 
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-white tracking-tight line-clamp-1">
+              <h1 className="text-base sm:text-lg font-bold text-white tracking-tight truncate">
                 {project.title || 'Untitled YouTube Video'}
               </h1>
               <a
                 href={project.youtube_url}
                 target="_blank"
                 rel="noreferrer"
-                className="text-zinc-500 hover:text-blue-400 transition-colors p-0.5"
+                className="text-zinc-500 hover:text-blue-400 transition-colors p-0.5 shrink-0"
                 title="View original YouTube video"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
             <p className="text-[11px] text-zinc-500 font-mono mt-0.5">
-              Source: {Math.round(project.duration / 60)}m {Math.round(project.duration % 60)}s • Created{' '}
+              Duration: {Math.round(project.duration / 60)}m {Math.round(project.duration % 60)}s • Created{' '}
               {new Date(project.created_at).toLocaleDateString()}
             </p>
           </div>
         </div>
 
-        {/* Quick Metrics & Actions */}
-        <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5 bg-zinc-900 border border-white/[0.06] px-3 py-1.5 rounded-full text-xs font-mono">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+        {/* Quick Studio Metrics & Bulk Controls */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex items-center gap-1.5 bg-[#111218] border border-white/[0.08] px-3 py-1.5 rounded-full text-xs font-mono">
             <span className="text-zinc-500">AVG:</span>
-            <span className="font-bold text-white">{avgVirality}/100</span>
+            <span className="font-bold text-amber-400">{avgVirality}/100</span>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-zinc-900 border border-white/[0.06] px-3 py-1.5 rounded-full text-xs font-mono">
+          <div className="flex items-center gap-1.5 bg-[#111218] border border-white/[0.08] px-3 py-1.5 rounded-full text-xs font-mono">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
             <span className="text-zinc-500">APPROVED:</span>
             <span className="font-bold text-emerald-400">
@@ -179,14 +220,43 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
             </span>
           </div>
 
+          {scheduledCount > 0 && (
+            <div className="flex items-center gap-1.5 bg-[#111218] border border-blue-500/30 px-3 py-1.5 rounded-full text-xs font-mono">
+              <Clock className="w-3.5 h-3.5 text-blue-400" />
+              <span className="text-zinc-500">SCHEDULED:</span>
+              <span className="font-bold text-blue-400">{scheduledCount}</span>
+            </div>
+          )}
+
+          {/* Bulk Schedule to Channel Button */}
           {approvedCount > 0 && (
-            <button
-              onClick={onNavigateToSchedule}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-white hover:bg-zinc-200 text-zinc-950 rounded-full text-xs font-semibold shadow-sm transition-all cursor-pointer"
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Schedule ({approvedCount})</span>
-            </button>
+            <div className="flex items-center gap-1.5 bg-[#111218] border border-white/[0.08] p-1 rounded-full">
+              {channels.length > 0 && (
+                <select
+                  value={bulkChannelId}
+                  onChange={(e) => setBulkChannelId(e.target.value)}
+                  className="bg-transparent text-xs text-zinc-300 font-medium px-2 py-0.5 focus:outline-none cursor-pointer"
+                >
+                  {channels.map((ch) => (
+                    <option key={ch.id} value={ch.id} className="bg-zinc-900 text-white">
+                      {ch.title}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                onClick={handleBulkSchedule}
+                disabled={isBulkScheduling || channels.length === 0}
+                className="flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-zinc-200 text-zinc-950 rounded-full text-xs font-semibold shadow-sm transition-all disabled:opacity-40 cursor-pointer"
+              >
+                {isBulkScheduling ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Calendar className="w-3.5 h-3.5" />
+                )}
+                <span>Schedule All ({approvedCount})</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -205,7 +275,7 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
               <button
                 onClick={handleRetry}
                 disabled={isRetrying}
-                className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full text-xs font-semibold shadow-lg shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow transition-all cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isRetrying ? 'animate-spin' : ''}`} />
                 <span>{isRetrying ? 'Retrying...' : 'Retry Pipeline Now'}</span>
@@ -215,14 +285,14 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
         </div>
       )}
 
-      {/* Designeer-style Filter Pills */}
+      {/* Filter Tabs */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 p-1 rounded-full bg-zinc-900/60 border border-white/[0.06]">
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-[#111218] border border-white/[0.08]">
           <button
             onClick={() => setFilter('all')}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
               filter === 'all'
-                ? 'bg-white text-zinc-950 font-semibold shadow-sm'
+                ? 'bg-zinc-800 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
@@ -231,9 +301,9 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 
           <button
             onClick={() => setFilter('approved')}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
               filter === 'approved'
-                ? 'bg-white text-zinc-950 font-semibold shadow-sm'
+                ? 'bg-zinc-800 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
@@ -241,31 +311,42 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
           </button>
 
           <button
-            onClick={() => setFilter('draft')}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-              filter === 'draft'
-                ? 'bg-white text-zinc-950 font-semibold shadow-sm'
+            onClick={() => setFilter('scheduled')}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+              filter === 'scheduled'
+                ? 'bg-zinc-800 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            Drafts ({clips.filter((c) => c.status === 'draft').length})
+            Scheduled ({scheduledCount})
+          </button>
+
+          <button
+            onClick={() => setFilter('draft')}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+              filter === 'draft'
+                ? 'bg-zinc-800 text-white shadow-sm'
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            Drafts ({draftCount})
           </button>
 
           <button
             onClick={() => setFilter('rejected')}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
               filter === 'rejected'
-                ? 'bg-white text-zinc-950 font-semibold shadow-sm'
+                ? 'bg-zinc-800 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            Rejected ({clips.filter((c) => c.status === 'rejected').length})
+            Rejected ({rejectedCount})
           </button>
         </div>
 
         <button
           onClick={fetchProjectDetails}
-          className="p-1.5 text-zinc-400 hover:text-white rounded-full hover:bg-zinc-800 transition-colors"
+          className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors"
           title="Refresh studio clips"
         >
           <RefreshCw className="w-3.5 h-3.5" />
@@ -274,17 +355,23 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 
       {/* Clips Grid */}
       {filteredClips.length === 0 ? (
-        <div className="craft-card rounded-2xl p-12 text-center border-dashed">
+        <div className="studio-card p-12 text-center border-dashed">
           <p className="text-zinc-500 text-xs font-mono">
             {isStillProcessing
               ? 'Rendering vertical 9:16 video cuts with FFmpeg... clips will populate automatically.'
-              : `No clips in '${filter}' filter.`}
+              : `No clips found in '${filter}' filter.`}
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredClips.map((clip) => (
-            <ClipCard key={clip.id} clip={clip} onUpdate={handleClipUpdate} onToast={onToast} />
+            <ClipCard
+              key={clip.id}
+              clip={clip}
+              channels={channels}
+              onUpdate={handleClipUpdate}
+              onToast={onToast}
+            />
           ))}
         </div>
       )}

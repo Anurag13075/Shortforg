@@ -79,9 +79,14 @@ projectsRouter.get('/:id', (req: Request, res: Response) => {
     }
 
     const clips = db.prepare(`
-      SELECT * FROM clips
-      WHERE project_id = ?
-      ORDER BY virality_score DESC, start_time ASC
+      SELECT
+        c.*,
+        ch.title as assigned_channel_title,
+        ch.avatar_url as assigned_channel_avatar
+      FROM clips c
+      LEFT JOIN channels ch ON c.assigned_channel_id = ch.id
+      WHERE c.project_id = ?
+      ORDER BY c.virality_score DESC, c.start_time ASC
     `).all(projectId) as ClipRecord[];
 
     res.json({

@@ -30,6 +30,10 @@ export interface Clip {
   video_path: string | null;
   thumbnail_path: string | null;
   status: 'draft' | 'approved' | 'rejected' | 'rendering';
+  assigned_channel_id?: string | null;
+  assigned_channel_title?: string | null;
+  assigned_channel_avatar?: string | null;
+  project_title?: string | null;
   created_at: string;
   updated_at: string;
 }

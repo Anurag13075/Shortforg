@@ -37,10 +37,22 @@ export const api = {
   }),
 
   // Clips
-  updateClip: (id: string, updates: Partial<Pick<Clip, 'title' | 'caption' | 'hashtags' | 'status' | 'crop_offset_x'>>) =>
+  getClips: (params?: { status?: string; project_id?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.status) sp.set('status', params.status);
+    if (params?.project_id) sp.set('project_id', params.project_id);
+    const qs = sp.toString();
+    return request<Clip[]>(`/api/clips${qs ? `?${qs}` : ''}`);
+  },
+  updateClip: (id: string, updates: Partial<Pick<Clip, 'title' | 'caption' | 'hashtags' | 'status' | 'crop_offset_x' | 'assigned_channel_id'>>) =>
     request<Clip>(`/api/clips/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(updates)
+    }),
+  scheduleClipDirect: (id: string, channel_id: string, scheduled_time?: string) =>
+    request<QueueItem>(`/api/clips/${id}/schedule`, {
+      method: 'POST',
+      body: JSON.stringify({ channel_id, scheduled_time })
     }),
   renderClip: (id: string, crop_offset_x?: number) =>
     request<Clip>(`/api/clips/${id}/render`, {
@@ -64,10 +76,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ clip_id, channel_id, scheduled_time })
     }),
-  autoSchedule: (channel_id: string, clips_per_day: number = 2) =>
+  autoSchedule: (channel_id: string, clips_per_day: number = 2, project_id?: string) =>
     request<{ success: boolean; message: string; scheduledCount: number }>('/api/schedule/auto', {
       method: 'POST',
-      body: JSON.stringify({ channel_id, clips_per_day })
+      body: JSON.stringify({ channel_id, clips_per_day, project_id })
     }),
   retryQueueItem: (id: string) =>
     request<{ success: boolean; message: string }>(`/api/schedule/${id}/retry`, {

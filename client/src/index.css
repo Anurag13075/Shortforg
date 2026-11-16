@@ -5,99 +5,88 @@
 @layer base {
   :root {
     color-scheme: dark;
-    --canvas-bg: #090a0d;
-    --card-bg: #0e0f14;
-    --card-surface: #13141a;
+    --canvas-bg: #090a0f;
+    --surface-base: #111218;
+    --surface-raised: #151720;
+    --surface-hover: #1a1c27;
     --border-subtle: rgba(255, 255, 255, 0.07);
-    --border-bright: rgba(255, 255, 255, 0.15);
+    --border-active: rgba(255, 255, 255, 0.15);
   }
 
   body {
-    @apply antialiased bg-[#090a0d] text-zinc-100 font-sans selection:bg-blue-500/30 selection:text-white;
+    @apply antialiased bg-[#090a0f] text-zinc-100 font-sans selection:bg-blue-500/25 selection:text-white;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01";
     letter-spacing: -0.012em;
     overflow-x: hidden;
   }
 
-  /* Custom precision scrollbar */
+  /* Precision scrollbar */
   ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.12);
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.22);
   }
 }
 
-/* Aurora background diffusion */
-.aurora-glow {
-  position: absolute;
-  top: -100px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 900px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.12) 0%, rgba(139, 92, 246, 0.08) 40%, rgba(244, 63, 94, 0.04) 70%, transparent 100%);
-  filter: blur(80px);
-  pointer-events: none;
-  z-index: 0;
+/* Stageshow Studio Card Surfaces */
+.studio-card {
+  background: #111218;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
-/* Designeer Luxury Card Surfaces */
-.bento-card {
-  background: #0d0e13;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 24px;
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.bento-card:hover {
+.studio-card:hover {
   border-color: rgba(255, 255, 255, 0.12);
 }
 
-.bento-card-interactive {
-  background: #0d0e13;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 24px;
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+.studio-card-interactive {
+  background: #111218;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.15s ease, background-color 0.15s ease;
 }
 
-.bento-card-interactive:hover {
-  transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.16);
-  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+.studio-card-interactive:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.15);
+  background: #14161f;
 }
 
-/* Frosted glass capsules */
-.glass-pill {
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* Backward compatibility for bento / craft cards */
+.bento-card, .craft-card {
+  background: #111218;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+  transition: border-color 0.15s ease;
 }
 
-.glass-pill:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.14);
+.bento-card-interactive, .craft-card-interactive {
+  background: #111218;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+  transition: transform 0.15s ease, border-color 0.15s ease;
 }
 
-/* Traffic light dots */
-.traffic-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 9999px;
+.bento-card-interactive:hover, .craft-card-interactive:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
-/* Custom sleek slider */
+/* Clean slider */
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
@@ -110,7 +99,7 @@ input[type="range"]:focus {
 }
 
 input[type="range"]::-webkit-slider-runnable-track {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.1);
   height: 4px;
   border-radius: 9999px;
 }
@@ -119,30 +108,15 @@ input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   margin-top: -6px;
-  background-color: #ffffff;
+  background-color: #f4f4f5;
   height: 16px;
   width: 16px;
   border-radius: 9999px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
-  transition: transform 0.15s ease, background-color 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  transition: transform 0.12s ease;
 }
 
 input[type="range"]::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
+  transform: scale(1.15);
   background-color: #3b82f6;
-}
-
-/* Custom keyframes */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-.shimmer-text {
-  background: linear-gradient(90deg, #ffffff 0%, #93c5fd 50%, #ffffff 100%);
-  background-size: 200% auto;
-  color: transparent;
-  -webkit-background-clip: text;
-  background-clip: text;
-  animation: shimmer 4s ease-in-out infinite;
 }

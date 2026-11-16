@@ -127,9 +127,11 @@ export function initDatabase() {
       video_path TEXT,
       thumbnail_path TEXT,
       status TEXT NOT NULL DEFAULT 'draft', -- draft, approved, rejected, rendering
+      assigned_channel_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      FOREIGN KEY (assigned_channel_id) REFERENCES channels(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS channels (
@@ -164,6 +166,10 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_clips_status ON clips(status);
     CREATE INDEX IF NOT EXISTS idx_queue_scheduled_time ON schedule_queue(scheduled_time, status);
   `);
+
+  try {
+    db.exec('ALTER TABLE clips ADD COLUMN assigned_channel_id TEXT;');
+  } catch {}
 }
 
 export interface ProjectRecord {
@@ -195,6 +201,7 @@ export interface ClipRecord {
   video_path: string | null;
   thumbnail_path: string | null;
   status: 'draft' | 'approved' | 'rejected' | 'rendering';
+  assigned_channel_id?: string | null;
   created_at: string;
   updated_at: string;
 }

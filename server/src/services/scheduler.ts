@@ -135,15 +135,23 @@ export class SchedulerService {
   /**
    * Auto-schedule approved clips that are not yet in the queue
    * Spreads them 1-2 per day at optimal Shorts engagement windows (10:00 AM & 6:00 PM)
+   * Supports optional filtering by projectId
    */
-  static autoScheduleApproved(channelId: string, clipsPerDay: number = 2): { scheduledCount: number } {
-    // Find approved clips not yet in schedule_queue
-    const unscheduledClips = db.prepare(`
+  static autoScheduleApproved(channelId: string, clipsPerDay: number = 2, projectId?: string): { scheduledCount: number } {
+    let query = `
       SELECT c.* FROM clips c
       WHERE c.status = 'approved'
       AND c.id NOT IN (SELECT clip_id FROM schedule_queue WHERE status IN ('scheduled', 'posting', 'posted'))
-      ORDER BY c.virality_score DESC
-    `).all() as ClipRecord[];
+    `;
+    const params: any[] = [];
+
+    if (projectId && projectId !== 'all') {
+      query += ' AND c.project_id = ? ';
+      params.push(projectId);
+    }
+
+    query += ' ORDER BY c.virality_score DESC ';
+    const unscheduledClips = db.prepare(query).all(...params) as ClipRecord[];
 
     if (unscheduledClips.length === 0) {
       return { scheduledCount: 0 };
