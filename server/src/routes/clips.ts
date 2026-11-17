@@ -74,6 +74,12 @@ clipsRouter.patch('/:id', (req: Request, res: Response) => {
     hashtags,
     status,
     crop_offset_x,
+    start_time,
+    end_time,
+    layout,
+    hook_overlay,
+    title_options,
+    caption_options,
     assigned_channel_id,
     caption_preset,
     caption_active_color,
@@ -93,6 +99,17 @@ clipsRouter.patch('/:id', (req: Request, res: Response) => {
       : clip.hashtags;
     const newStatus = status !== undefined ? status : clip.status;
     const newOffset = crop_offset_x !== undefined ? parseFloat(crop_offset_x) : clip.crop_offset_x;
+    const newStartTime = start_time !== undefined ? parseFloat(start_time) : clip.start_time;
+    const newEndTime = end_time !== undefined ? parseFloat(end_time) : clip.end_time;
+    const newLayout = layout !== undefined ? layout : (clip.layout || 'blur_bg');
+    const newHookOverlay = hook_overlay !== undefined ? (hook_overlay ? 1 : 0) : (clip.hook_overlay ?? 1);
+    const newTitleOptions = title_options !== undefined
+      ? (typeof title_options === 'string' ? title_options : JSON.stringify(title_options))
+      : clip.title_options;
+    const newCaptionOptions = caption_options !== undefined
+      ? (typeof caption_options === 'string' ? caption_options : JSON.stringify(caption_options))
+      : clip.caption_options;
+
     const newChannelId = assigned_channel_id !== undefined ? assigned_channel_id : clip.assigned_channel_id;
     const newPreset = caption_preset !== undefined ? String(caption_preset) : (clip.caption_preset || 'hormozi_gold');
     const newActiveColor = caption_active_color !== undefined ? String(caption_active_color) : (clip.caption_active_color || '#FFE600');
@@ -102,10 +119,15 @@ clipsRouter.patch('/:id', (req: Request, res: Response) => {
 
     db.prepare(`
       UPDATE clips
-      SET title = ?, caption = ?, hashtags = ?, status = ?, crop_offset_x = ?, assigned_channel_id = ?,
+      SET title = ?, caption = ?, hashtags = ?, status = ?, crop_offset_x = ?, start_time = ?, end_time = ?,
+          layout = ?, hook_overlay = ?, title_options = ?, caption_options = ?, assigned_channel_id = ?,
           caption_preset = ?, caption_active_color = ?, caption_base_color = ?, words_per_burst = ?, updated_at = ?
       WHERE id = ?
-    `).run(newTitle, newCaption, newHashtags, newStatus, newOffset, newChannelId, newPreset, newActiveColor, newBaseColor, newBurst, now, clipId);
+    `).run(
+      newTitle, newCaption, newHashtags, newStatus, newOffset, newStartTime, newEndTime,
+      newLayout, newHookOverlay, newTitleOptions, newCaptionOptions, newChannelId,
+      newPreset, newActiveColor, newBaseColor, newBurst, now, clipId
+    );
 
     const updated = db.prepare(`
       SELECT c.*, ch.title as assigned_channel_title, ch.avatar_url as assigned_channel_avatar
@@ -173,12 +195,16 @@ clipsRouter.post('/:id/schedule', (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/clips/:id/render - Trigger re-render of clip after editing crop offset or caption styling
+ * POST /api/clips/:id/render - Trigger re-render of clip after editing crop offset, trim, layout or captions
  */
 clipsRouter.post('/:id/render', async (req: Request, res: Response) => {
   const clipId = String(req.params.id);
   const {
     crop_offset_x,
+    start_time,
+    end_time,
+    layout,
+    hook_overlay,
     caption_preset,
     caption_active_color,
     caption_base_color,
@@ -188,6 +214,10 @@ clipsRouter.post('/:id/render', async (req: Request, res: Response) => {
   try {
     const updatedClip = await PipelineService.reRenderClip(clipId, {
       cropOffsetX: crop_offset_x !== undefined ? parseFloat(crop_offset_x) : undefined,
+      startTime: start_time !== undefined ? parseFloat(start_time) : undefined,
+      endTime: end_time !== undefined ? parseFloat(end_time) : undefined,
+      layout,
+      hookOverlay: hook_overlay !== undefined ? Boolean(hook_overlay) : undefined,
       captionPreset: caption_preset,
       captionActiveColor: caption_active_color,
       captionBaseColor: caption_base_color,
@@ -241,13 +271,15 @@ clipsRouter.post('/:id/regenerate-metadata', async (req: Request, res: Response)
 
     db.prepare(`
       UPDATE clips
-      SET title = ?, hook_line = ?, caption = ?, hashtags = ?, updated_at = ?
+      SET title = ?, hook_line = ?, caption = ?, hashtags = ?, title_options = ?, caption_options = ?, updated_at = ?
       WHERE id = ?
     `).run(
       newMetadata.title,
       newMetadata.hook_line,
       newMetadata.caption,
       JSON.stringify(newMetadata.hashtags),
+      JSON.stringify(newMetadata.title_options),
+      JSON.stringify(newMetadata.caption_options),
       now,
       clipId
     );
@@ -321,6 +353,29 @@ clipsRouter.get('/:id/thumbnail', (req: Request, res: Response) => {
     fs.createReadStream(clip.thumbnail_path).pipe(res);
   } catch (err: any) {
     res.status(500).send('Error loading thumbnail');
+  }
+});
+
+/**
+ * DELETE /api/clips/:id - Delete a single clip and remove its files
+ */
+clipsRouter.delete('/:id', (req: Request, res: Response) => {
+  const clipId = String(req.params.id);
+  try {
+    const clip = db.prepare('SELECT * FROM clips WHERE id = ?').get(clipId) as ClipRecord | undefined;
+    if (!clip) return res.status(404).json({ success: false, error: 'Clip not found' });
+
+    if (clip.video_path && fs.existsSync(clip.video_path)) {
+      try { fs.unlinkSync(clip.video_path); } catch {}
+    }
+    if (clip.thumbnail_path && fs.existsSync(clip.thumbnail_path)) {
+      try { fs.unlinkSync(clip.thumbnail_path); } catch {}
+    }
+
+    db.prepare('DELETE FROM clips WHERE id = ?').run(clipId);
+    res.json({ success: true, message: 'Clip deleted successfully' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

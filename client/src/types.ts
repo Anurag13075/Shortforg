@@ -8,6 +8,7 @@ export interface Project {
   progress: number;
   stage_message: string;
   error_message: string | null;
+  niche?: string | null;
   clip_count?: number;
   approved_count?: number;
   clips?: Clip[];
@@ -29,7 +30,7 @@ export interface Clip {
   crop_offset_x: number;
   video_path: string | null;
   thumbnail_path: string | null;
-  status: 'draft' | 'approved' | 'rejected' | 'rendering';
+  status: 'draft' | 'approved' | 'rejected' | 'rendering' | 'failed';
   caption_preset?: 'hormozi_gold' | 'neon_green' | 'cyber_cyan' | 'sunset_punch' | 'electric_purple' | 'custom' | null;
   caption_active_color?: string | null;
   caption_base_color?: string | null;
@@ -37,6 +38,11 @@ export interface Clip {
   assigned_channel_id?: string | null;
   assigned_channel_title?: string | null;
   assigned_channel_avatar?: string | null;
+  title_options?: string | null;
+  caption_options?: string | null;
+  layout?: 'blur_bg' | 'crop';
+  hook_overlay?: number;
+  error_message?: string | null;
   project_title?: string | null;
   created_at: string;
   updated_at: string;

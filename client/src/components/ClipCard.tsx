@@ -18,7 +18,12 @@ import {
   CheckCircle2,
   Sparkles,
   Palette,
-  Type
+  Type,
+  Scissors,
+  Trash2,
+  Layers,
+  Crop,
+  AlertCircle
 } from 'lucide-react';
 import { Clip, Channel } from '../types';
 import { api } from '../api';
@@ -27,6 +32,7 @@ interface ClipCardProps {
   clip: Clip;
   channels: Channel[];
   onUpdate: (updatedClip: Clip) => void;
+  onDelete?: (clipId: string) => void;
   onToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
@@ -39,14 +45,38 @@ const CAPTION_PRESET_MAP: Record<string, { label: string; active: string; base: 
   custom: { label: 'Custom Colors', active: '#FFE600', base: '#FFFFFF' }
 };
 
-export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, onToast }) => {
+export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, onDelete, onToast }) => {
   const [activeTab, setActiveTab] = useState<'video' | 'thumbnail'>('video');
   const [showMetadata, setShowMetadata] = useState(false);
   const [showCaptionStudio, setShowCaptionStudio] = useState(false);
+  const [showTrimStudio, setShowTrimStudio] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(clip.title);
   const [caption, setCaption] = useState(clip.caption || '');
+  const [startTime, setStartTime] = useState<number>(clip.start_time);
+  const [endTime, setEndTime] = useState<number>(clip.end_time);
+  const [layout, setLayout] = useState<'blur_bg' | 'crop'>(clip.layout || 'blur_bg');
+  const [hookOverlay, setHookOverlay] = useState<boolean>(clip.hook_overlay !== 0);
+
+  const [titleOptions] = useState<string[]>(() => {
+    try {
+      const parsed = JSON.parse(clip.title_options || '[]');
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : [clip.title];
+    } catch {
+      return [clip.title];
+    }
+  });
+
+  const [captionOptions] = useState<string[]>(() => {
+    try {
+      const parsed = JSON.parse(clip.caption_options || '[]');
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : [clip.caption || ''];
+    } catch {
+      return [clip.caption || ''];
+    }
+  });
+
   const [hashtags, setHashtags] = useState(() => {
     try {
       const parsed = JSON.parse(clip.hashtags || '[]');
@@ -81,7 +111,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
   });
   const [isScheduling, setIsScheduling] = useState(false);
 
-  const clipDuration = Math.round(clip.end_time - clip.start_time);
+  const clipDuration = Math.round(endTime - startTime);
 
   const handleStatusChange = async (newStatus: 'approved' | 'rejected' | 'draft') => {
     try {
@@ -190,6 +220,42 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
     }
   };
 
+  const handleTrimAndRender = async () => {
+    setIsRendering(true);
+    onToast(`Re-rendering clip (${Math.round(endTime - startTime)}s) with 1080p FFmpeg...`, 'info');
+    try {
+      const updated = await api.renderClip(clip.id, {
+        start_time: startTime,
+        end_time: endTime,
+        layout,
+        hook_overlay: hookOverlay,
+        crop_offset_x: cropOffset,
+        caption_preset: captionPreset,
+        caption_active_color: captionActiveColor,
+        caption_base_color: captionBaseColor,
+        words_per_burst: wordsPerBurst
+      });
+      onUpdate(updated);
+      setIsEditing(false);
+      onToast('Short re-rendered with new trim and 1080p layout!', 'success');
+    } catch (err: any) {
+      onToast(`Trim render failed: ${err.message}`, 'error');
+    } finally {
+      setIsRendering(false);
+    }
+  };
+
+  const handleDeleteClip = async () => {
+    if (!window.confirm(`Delete "${clip.title}" from your studio?`)) return;
+    try {
+      await api.deleteClip(clip.id);
+      onToast('Short deleted', 'info');
+      onDelete?.(clip.id);
+    } catch (err: any) {
+      onToast(`Failed to delete: ${err.message}`, 'error');
+    }
+  };
+
   const handleRegenerateMetadata = async () => {
     setIsRegeneratingMetadata(true);
     onToast('Analyzing spoken transcript for exact quote match...', 'info');
@@ -284,11 +350,26 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
 
       {/* 9:16 Video Player Frame */}
       <div className="relative bg-black w-full aspect-[9/16] max-h-[380px] flex items-center justify-center overflow-hidden border-b border-white/[0.06]">
-        {isRendering ? (
+        {clip.status === 'failed' ? (
+          <div className="flex flex-col items-center justify-center p-4 text-center space-y-2">
+            <AlertCircle className="w-8 h-8 text-rose-400" />
+            <p className="text-xs font-semibold text-rose-300">Render Failed</p>
+            <p className="text-[10px] text-zinc-400 font-mono line-clamp-3">
+              {clip.error_message || 'Video processing encountered an error'}
+            </p>
+            <button
+              onClick={handleTrimAndRender}
+              disabled={isRendering}
+              className="px-3 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/30 rounded text-xs font-medium transition-colors cursor-pointer"
+            >
+              Retry Render
+            </button>
+          </div>
+        ) : isRendering ? (
           <div className="flex flex-col items-center gap-2 text-center p-4">
             <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
             <p className="text-xs font-medium text-white">Re-rendering with FFmpeg...</p>
-            <p className="text-[10px] text-zinc-500 font-mono">Applying 9:16 crop & animated subtitles</p>
+            <p className="text-[10px] text-zinc-500 font-mono">Applying 1080p layout & animated subtitles</p>
           </div>
         ) : activeTab === 'video' ? (
           clip.video_path ? (
@@ -382,6 +463,31 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
               }}
               className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-white/30 transition-colors font-medium"
             />
+            {titleOptions.length > 1 && (
+              <div className="mt-1.5 space-y-1">
+                <span className="text-[9px] font-mono text-zinc-500 uppercase block">AI Title Variations (1-Click Switch):</span>
+                <div className="flex flex-col gap-1">
+                  {titleOptions.map((opt, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setTitle(opt);
+                        setIsEditing(true);
+                      }}
+                      className={`text-left px-2 py-1 rounded text-[11px] font-medium transition-all ${
+                        title === opt
+                          ? 'bg-amber-400/15 border border-amber-400/40 text-amber-200'
+                          : 'bg-black/30 border border-white/[0.04] text-zinc-400 hover:text-zinc-200 hover:border-white/10'
+                      }`}
+                    >
+                      <span className="text-zinc-500 font-mono text-[9px] mr-1.5">v{idx + 1}</span>
+                      <span>{opt}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Channel Selector Pill */}
@@ -434,6 +540,32 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
                   placeholder="Shorts caption..."
                   className="w-full bg-black/40 border border-white/[0.06] rounded-lg p-2 text-xs text-zinc-300 focus:outline-none focus:border-white/20 resize-none leading-relaxed"
                 />
+
+                {captionOptions.length > 1 && (
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-mono text-zinc-500 uppercase block">AI Caption Variations:</span>
+                    <div className="flex flex-col gap-1">
+                      {captionOptions.map((cOpt, cIdx) => (
+                        <button
+                          key={cIdx}
+                          type="button"
+                          onClick={() => {
+                            setCaption(cOpt);
+                            setIsEditing(true);
+                          }}
+                          className={`text-left px-2 py-1 rounded text-[10px] transition-all line-clamp-1 ${
+                            caption === cOpt
+                              ? 'bg-blue-400/15 border border-blue-400/40 text-blue-200'
+                              : 'bg-black/30 border border-white/[0.04] text-zinc-400 hover:text-zinc-200'
+                          }`}
+                        >
+                          <span className="text-zinc-500 font-mono text-[9px] mr-1.5">Opt {cIdx + 1}:</span>
+                          <span>{cOpt}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <input
                   type="text"
@@ -597,6 +729,146 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
             )}
           </div>
 
+          {/* Collapsible Trim & 1080p Layout Studio */}
+          <div className="mb-2">
+            <button
+              onClick={() => setShowTrimStudio(!showTrimStudio)}
+              className="flex items-center justify-between w-full text-[10px] font-mono text-zinc-400 hover:text-white py-1 transition-colors"
+            >
+              <span className="flex items-center gap-1.5">
+                <Scissors className="w-3.5 h-3.5 text-blue-400" />
+                <span className="font-semibold text-zinc-300">TRIM & 1080P LAYOUT</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-400/10 text-blue-300 border border-blue-400/20 font-mono font-medium">
+                  {layout === 'blur_bg' ? 'BLUR BG 1080P' : '9:16 CROP'}
+                </span>
+              </span>
+              {showTrimStudio ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+
+            {showTrimStudio && (
+              <div className="space-y-2.5 mt-2 p-2.5 rounded-lg bg-black/50 border border-white/[0.08] animate-fade-in text-xs">
+                {/* Layout Mode */}
+                <div>
+                  <span className="text-[9px] font-mono text-zinc-500 uppercase block mb-1">
+                    Aspect Ratio & Layout Mode
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLayout('blur_bg');
+                        setIsEditing(true);
+                      }}
+                      className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-[10px] font-mono border transition-all ${
+                        layout === 'blur_bg'
+                          ? 'bg-blue-600/20 border-blue-500/50 text-blue-200 font-semibold'
+                          : 'bg-zinc-950/60 text-zinc-400 border-white/[0.06] hover:text-zinc-200'
+                      }`}
+                    >
+                      <Layers className="w-3 h-3 text-blue-400" />
+                      <span>Canvas (Blur BG)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLayout('crop');
+                        setIsEditing(true);
+                      }}
+                      className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded text-[10px] font-mono border transition-all ${
+                        layout === 'crop'
+                          ? 'bg-blue-600/20 border-blue-500/50 text-blue-200 font-semibold'
+                          : 'bg-zinc-950/60 text-zinc-400 border-white/[0.06] hover:text-zinc-200'
+                      }`}
+                    >
+                      <Crop className="w-3 h-3 text-blue-400" />
+                      <span>Full Crop (9:16)</span>
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-zinc-500 mt-1 font-mono">
+                    {layout === 'blur_bg'
+                      ? '✓ Hero Canvas: 100% native resolution video centered with blurred top/bottom.'
+                      : '✓ Center Crop: Fills entire 9:16 vertical frame (adjust horizontal crop below).'}
+                  </p>
+                </div>
+
+                {/* Hook Overlay Banner */}
+                <div className="pt-2 border-t border-white/[0.06] flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-semibold text-zinc-300 block">Burn Hook Banner</span>
+                    <span className="text-[9px] text-zinc-500 font-mono">Shows hook headline at top (0-2.5s)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHookOverlay(!hookOverlay);
+                      setIsEditing(true);
+                    }}
+                    className={`w-9 h-5 rounded-full transition-colors relative ${
+                      hookOverlay ? 'bg-amber-400' : 'bg-zinc-800'
+                    }`}
+                  >
+                    <span
+                      className={`block w-3.5 h-3.5 rounded-full bg-black absolute top-0.75 transition-transform ${
+                        hookOverlay ? 'left-4.5' : 'left-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Precision Trim Handles */}
+                <div className="pt-2 border-t border-white/[0.06]">
+                  <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 mb-1.5">
+                    <span>TIMESTAMPS (SECONDS)</span>
+                    <span className="text-amber-400 font-bold">{Math.round(endTime - startTime)}s duration</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[9px] font-mono text-zinc-500 block mb-0.5">Start Time (s)</label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={startTime}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setStartTime(val);
+                          setIsEditing(true);
+                        }}
+                        className="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-mono text-zinc-500 block mb-0.5">End Time (s)</label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min={startTime + 3}
+                        value={endTime}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || startTime + 5;
+                          setEndTime(val);
+                          setIsEditing(true);
+                        }}
+                        className="w-full bg-black/40 border border-white/10 rounded px-2 py-1 text-xs text-white font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Apply Trim & Re-render button */}
+                <button
+                  type="button"
+                  onClick={handleTrimAndRender}
+                  disabled={isRendering}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow transition-colors disabled:opacity-40 cursor-pointer"
+                >
+                  <RotateCw className={`w-3 h-3 ${isRendering ? 'animate-spin' : ''}`} />
+                  <span>Apply Trim & Re-render (1080p)</span>
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Crop Offset Slider */}
           <div className="pt-2 border-t border-white/[0.05]">
             <div className="flex items-center justify-between text-[11px] mb-1">
@@ -724,7 +996,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
               <button
                 onClick={handleSaveChanges}
                 disabled={isSaving}
-                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-white text-zinc-950 hover:bg-zinc-200 rounded-lg text-xs font-semibold transition-all"
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 bg-white text-zinc-950 hover:bg-zinc-200 rounded-lg text-xs font-semibold transition-all cursor-pointer"
               >
                 {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                 <span>Save</span>
@@ -733,7 +1005,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
               <button
                 onClick={handleRegenerate}
                 disabled={isRendering}
-                className="flex items-center justify-center gap-1 py-1.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-medium border border-white/10 transition-colors"
+                className="flex items-center justify-center gap-1 py-1.5 px-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-medium border border-white/10 transition-colors cursor-pointer"
                 title="Re-render 9:16 with new crop offset"
               >
                 <RotateCw className={`w-3 h-3 ${isRendering ? 'animate-spin' : ''}`} />
@@ -743,11 +1015,11 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
           )}
 
           {/* Workflow Action Grid */}
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-5 gap-1.5">
             {/* Approve / Status */}
             <button
               onClick={() => handleStatusChange(clip.status === 'approved' ? 'draft' : 'approved')}
-              className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                 clip.status === 'approved'
                   ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-semibold shadow-sm'
                   : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/[0.06]'
@@ -761,7 +1033,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
             {/* Schedule 1-Click / Modal */}
             <button
               onClick={() => setShowScheduleModal(!showScheduleModal)}
-              className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                 clip.status === 'scheduled'
                   ? 'bg-blue-500/20 border border-blue-500/40 text-blue-300 font-semibold'
                   : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/[0.06]'
@@ -775,7 +1047,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
             {/* Reject */}
             <button
               onClick={() => handleStatusChange(clip.status === 'rejected' ? 'draft' : 'rejected')}
-              className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                 clip.status === 'rejected'
                   ? 'bg-rose-500/20 border border-rose-500/40 text-rose-300 font-semibold'
                   : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-white/[0.06]'
@@ -790,12 +1062,21 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
             <a
               href={api.getDownloadUrl(clip.id)}
               download
-              className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/[0.06] transition-colors"
+              className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/[0.06] transition-colors cursor-pointer"
               title="Download 9:16 MP4 to disk"
             >
               <Download className="w-3.5 h-3.5" />
               <span>MP4</span>
             </a>
+
+            {/* Delete Clip */}
+            <button
+              onClick={handleDeleteClip}
+              className="flex items-center justify-center p-1.5 rounded-lg text-xs font-medium bg-zinc-900 hover:bg-rose-950/40 text-zinc-500 hover:text-rose-400 border border-white/[0.06] transition-colors cursor-pointer"
+              title="Delete this short"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </div>

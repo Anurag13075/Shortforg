@@ -118,16 +118,17 @@ export class FFmpegService {
     startTime: number;
     endTime: number;
     cropOffsetXPercent: number;
+    layout?: 'blur_bg' | 'crop';
     assSubtitlePath?: string;
     outputPath: string;
     onProgress?: (percent: number) => void;
   }): Promise<string> {
     try {
-      // First attempt with animated subtitles
+      // First attempt with animated subtitles and chosen layout
       return await this.executeRender(params, Boolean(params.assSubtitlePath));
     } catch (err: any) {
       if (params.assSubtitlePath) {
-        console.warn('Subtitles filter failed (font/libass error), falling back to clean 9:16 video cut:', err.message);
+        console.warn('Subtitles filter failed (font/libass error), falling back to clean video cut:', err.message);
         // Fallback: render without subtitles filter
         return await this.executeRender(params, false);
       }
@@ -141,6 +142,7 @@ export class FFmpegService {
       startTime: number;
       endTime: number;
       cropOffsetXPercent: number;
+      layout?: 'blur_bg' | 'crop';
       assSubtitlePath?: string;
       outputPath: string;
       onProgress?: (percent: number) => void;
@@ -149,33 +151,75 @@ export class FFmpegService {
   ): Promise<string> {
     const { sourceVideoPath, startTime, endTime, cropOffsetXPercent, assSubtitlePath, outputPath } = params;
     const duration = endTime - startTime;
+    const layout = params.layout || 'blur_bg';
 
-    const offsetFactor = Math.max(-1, Math.min(1, cropOffsetXPercent / 100));
-    const cropExpr = `crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':'min(max(0,(iw-ow)/2+${offsetFactor}*(iw-ow)/2),iw-ow)':'(ih-oh)/2'`;
-    const scaleExpr = `scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black`;
+    const hasSubtitles = includeSubtitles && assSubtitlePath && fs.existsSync(assSubtitlePath);
+    const escapedAssPath = hasSubtitles ? this.escapeFilterPath(assSubtitlePath!) : '';
 
-    let vfFilters = `${cropExpr},${scaleExpr}`;
-    if (includeSubtitles && assSubtitlePath && fs.existsSync(assSubtitlePath)) {
-      const escapedAssPath = this.escapeFilterPath(assSubtitlePath);
-      vfFilters += `,subtitles=${escapedAssPath}`;
+    let args: string[] = [];
+
+    if (layout === 'blur_bg') {
+      // Hero Canvas Layout: Original video centered sharply with blurred/darkened background
+      // 100% original video resolution is maintained with no cropped faces or zoom blur
+      let filterComplex = `[0:v]split=2[fg][bg];[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5,eq=brightness=-0.18[bg_dark];[fg]scale=1080:1920:force_original_aspect_ratio=decrease[fg_scaled];[bg_dark][fg_scaled]overlay=(W-w)/2:(H-h)/2[canvas]`;
+      if (hasSubtitles) {
+        filterComplex += `;[canvas]subtitles=${escapedAssPath}[v_out]`;
+      } else {
+        filterComplex += `;[canvas]null[v_out]`;
+      }
+
+      args = [
+        '-y',
+        '-ss', startTime.toFixed(3),
+        '-i', sourceVideoPath,
+        '-t', duration.toFixed(3),
+        '-filter_complex', filterComplex,
+        '-map', '[v_out]',
+        '-map', '0:a?',
+        '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+        '-c:v', 'libx264',
+        '-preset', 'fast',
+        '-crf', '18',
+        '-b:v', '4500k',
+        '-maxrate', '6000k',
+        '-bufsize', '8000k',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-movflags', '+faststart',
+        outputPath
+      ];
+    } else {
+      // Smart 9:16 Center / Offset Crop with Lanczos resampling and unsharp mask
+      const offsetFactor = Math.max(-1, Math.min(1, cropOffsetXPercent / 100));
+      const cropExpr = `crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':'min(max(0,(iw-ow)/2+${offsetFactor}*(iw-ow)/2),iw-ow)':'(ih-oh)/2'`;
+      const scaleExpr = `scale=1080:1920:flags=lanczos,unsharp=3:3:0.8:3:3:0.4`;
+
+      let vfFilters = `${cropExpr},${scaleExpr}`;
+      if (hasSubtitles) {
+        vfFilters += `,subtitles=${escapedAssPath}`;
+      }
+
+      args = [
+        '-y',
+        '-ss', startTime.toFixed(3),
+        '-i', sourceVideoPath,
+        '-t', duration.toFixed(3),
+        '-vf', vfFilters,
+        '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+        '-c:v', 'libx264',
+        '-preset', 'fast',
+        '-crf', '18',
+        '-b:v', '4500k',
+        '-maxrate', '6000k',
+        '-bufsize', '8000k',
+        '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-movflags', '+faststart',
+        outputPath
+      ];
     }
-
-    const args = [
-      '-y',
-      '-ss', startTime.toFixed(3),
-      '-i', sourceVideoPath,
-      '-t', duration.toFixed(3),
-      '-vf', vfFilters,
-      '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
-      '-c:v', 'libx264',
-      '-preset', 'fast',
-      '-crf', '22',
-      '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac',
-      '-b:a', '192k',
-      '-movflags', '+faststart',
-      outputPath
-    ];
 
     return new Promise((resolve, reject) => {
       const child = spawn('ffmpeg', args);
@@ -218,9 +262,11 @@ export class FFmpegService {
     captureTime: number;
     hookText: string;
     cropOffsetXPercent: number;
+    layout?: 'blur_bg' | 'crop';
     outputPath: string;
   }): Promise<string> {
     const { sourceVideoPath, captureTime, hookText, cropOffsetXPercent, outputPath } = params;
+    const layout = params.layout || 'blur_bg';
 
     const tempAssPath = outputPath + '.thumb.ass';
     const cleanHook = (hookText || 'WATCH THIS')
@@ -259,16 +305,20 @@ Dialogue: 0,0:00:00.00,0:00:10.00,Hook,,0,0,0,,{\\an5\\b1\\c&H00F0FF&\\3c&H00000
 
     fs.writeFileSync(tempAssPath, assContent, 'utf-8');
 
-    const offsetFactor = Math.max(-1, Math.min(1, cropOffsetXPercent / 100));
-    const cropExpr = `crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':'min(max(0,(iw-ow)/2+${offsetFactor}*(iw-ow)/2),iw-ow)':'(ih-oh)/2'`;
-    const scaleExpr = `scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black`;
+    let vfFilters = '';
+    if (layout === 'blur_bg') {
+      vfFilters = `scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black`;
+    } else {
+      const offsetFactor = Math.max(-1, Math.min(1, cropOffsetXPercent / 100));
+      vfFilters = `crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':'min(max(0,(iw-ow)/2+${offsetFactor}*(iw-ow)/2),iw-ow)':'(ih-oh)/2',scale=1080:1920`;
+    }
 
     // Attempt with subtitles; fallback to clean frame if subtitle filter fails
     try {
       const escapedAssPath = this.escapeFilterPath(tempAssPath);
-      await this.runThumbnailFfmpeg(`${cropExpr},${scaleExpr},subtitles=${escapedAssPath}`, sourceVideoPath, captureTime, outputPath);
+      await this.runThumbnailFfmpeg(`${vfFilters},subtitles=${escapedAssPath}`, sourceVideoPath, captureTime, outputPath);
     } catch {
-      await this.runThumbnailFfmpeg(`${cropExpr},${scaleExpr}`, sourceVideoPath, captureTime, outputPath);
+      await this.runThumbnailFfmpeg(vfFilters, sourceVideoPath, captureTime, outputPath);
     } finally {
       try { fs.unlinkSync(tempAssPath); } catch {}
     }

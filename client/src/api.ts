@@ -37,9 +37,15 @@ export const api = {
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          let cachedClips: any[] = [];
+          try {
+            const allClipsStr = localStorage.getItem('sf_clips_vault_all');
+            if (allClipsStr) cachedClips = JSON.parse(allClipsStr);
+          } catch {}
+
           await request<{ success: boolean; synced: number }>('/api/projects/sync', {
             method: 'POST',
-            body: JSON.stringify({ projects: parsed })
+            body: JSON.stringify({ projects: parsed, clips: cachedClips })
           });
           return await request<Project[]>('/api/projects');
         }
@@ -53,10 +59,45 @@ export const api = {
       throw e;
     }
   },
-  getProject: (id: string) => request<Project & { clips: Clip[] }>(`/api/projects/${id}`),
-  createProject: (youtubeUrl: string) => request<Project>('/api/projects', {
+  getProject: async (id: string) => {
+    try {
+      const data = await request<Project & { clips: Clip[] }>(`/api/projects/${id}`);
+      if (data) {
+        try {
+          localStorage.setItem(`sf_project_${id}`, JSON.stringify(data));
+          if (Array.isArray(data.clips)) {
+            localStorage.setItem(`sf_clips_${id}`, JSON.stringify(data.clips));
+
+            // Merge into sf_clips_vault_all
+            let existing: Clip[] = [];
+            try {
+              const allStr = localStorage.getItem('sf_clips_vault_all');
+              if (allStr) existing = JSON.parse(allStr);
+            } catch {}
+            const filtered = existing.filter((c) => c.project_id !== id);
+            localStorage.setItem('sf_clips_vault_all', JSON.stringify([...filtered, ...data.clips]));
+          }
+        } catch {}
+      }
+      return data;
+    } catch (err: any) {
+      // Fallback to cache if server DB restarted
+      const cached = localStorage.getItem(`sf_project_${id}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          const cachedClips = localStorage.getItem(`sf_clips_${id}`);
+          if (cachedClips) parsed.clips = JSON.parse(cachedClips);
+          return parsed;
+        } catch {}
+      }
+      throw err;
+    }
+  },
+  getProjectLogs: (id: string) => request<any[]>(`/api/projects/${id}/logs`),
+  createProject: (youtubeUrl: string, niche?: string) => request<Project>('/api/projects', {
     method: 'POST',
-    body: JSON.stringify({ youtubeUrl })
+    body: JSON.stringify({ youtubeUrl, niche: niche || 'high_energy' })
   }),
   uploadVideoFile: async (file: File): Promise<Project> => {
     const res = await fetch(`/api/projects/upload?filename=${encodeURIComponent(file.name)}`, {
@@ -127,10 +168,14 @@ export const api = {
     const qs = sp.toString();
     return request<Clip[]>(`/api/clips${qs ? `?${qs}` : ''}`);
   },
-  updateClip: (id: string, updates: Partial<Pick<Clip, 'title' | 'caption' | 'hashtags' | 'status' | 'crop_offset_x' | 'assigned_channel_id'>>) =>
+  updateClip: (id: string, updates: Partial<Clip>) =>
     request<Clip>(`/api/clips/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(updates)
+    }),
+  deleteClip: (id: string) =>
+    request<{ success: boolean; message: string }>(`/api/clips/${id}`, {
+      method: 'DELETE'
     }),
   scheduleClipDirect: (id: string, channel_id: string, scheduled_time?: string) =>
     request<QueueItem>(`/api/clips/${id}/schedule`, {
@@ -141,6 +186,10 @@ export const api = {
     id: string,
     options?: number | {
       crop_offset_x?: number;
+      start_time?: number;
+      end_time?: number;
+      layout?: 'blur_bg' | 'crop';
+      hook_overlay?: boolean;
       caption_preset?: string;
       caption_active_color?: string;
       caption_base_color?: string;

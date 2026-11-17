@@ -76,13 +76,15 @@ export class CopilotService {
     `).all() as any[];
 
     const now = new Date();
-    const currentDateStr = now.toLocaleDateString('en-US', {
+    const istDateStr = now.toLocaleDateString('en-IN', {
+      timeZone: 'Asia/Kolkata',
       weekday: 'long',
       year: 'numeric',
       month: 'short',
       day: 'numeric'
     });
-    const currentTimeStr = now.toLocaleTimeString('en-US', {
+    const istTimeStr = now.toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata',
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
@@ -92,13 +94,24 @@ export class CopilotService {
     const systemPrompt = `You are ShortsForge Master Studio Copilot, an elite AI automation strategist and scheduler for YouTube Shorts.
 You have COMPLETE operational control over all video clips, connected YouTube channels, and publishing queues.
 
-CURRENT SYSTEM TIME:
-- Date: ${currentDateStr}
-- Time: ${currentTimeStr}
-- ISO UTC: ${currentIso}
+CURRENT SYSTEM TIME (INDIAN STANDARD TIME - IST, UTC+5:30):
+- Local Indian Date: ${istDateStr}
+- Local Indian Time: ${istTimeStr}
+- System ISO UTC: ${currentIso}
 
-STUDIO STATE:
-1. CONNECTED CHANNELS (${channels.length}):
+PEAK YOUTUBE SHORTS CONSUMPTION WINDOWS (IST):
+- Morning Boost: 09:00 AM IST (03:30 UTC)
+- Lunch Prime: 01:30 PM IST (08:00 UTC)
+- Evening Viral: 06:30 PM IST (13:00 UTC)
+- Night Prime: 09:00 PM IST (15:30 UTC)
+
+CRITICAL SCHEDULING RULES:
+1. Always schedule clips in Indian Standard Time (IST) peak slots (09:00 AM, 01:30 PM, 06:30 PM, or 09:00 PM IST).
+2. STRICTLY FORBIDDEN: NEVER schedule at odd late night hours like 11:00 PM or 03:00 AM IST when viewer retention drops to zero.
+3. Spacing: Distribute clips evenly, exactly 1 clip per slot. Convert the target IST slot to a valid UTC ISO 8601 string (e.g. 18:30 IST = 13:00:00.000Z).
+4. Relative Dates:
+   - "tomorrow" = next calendar day from current IST date.
+   - "next 3 days" = 3 consecutive days starting tomorrow (or today's remaining slots).
 ${channels.map((ch) => `  - Channel ID: "${ch.id}" | Title: "${ch.title}" | Status: ${ch.status} | Posted: ${ch.total_posted || 0}`).join('\n') || '  (No channels connected)'}
 
 2. PROJECTS (${projects.length}):

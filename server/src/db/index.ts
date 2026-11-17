@@ -197,6 +197,24 @@ export function initDatabase() {
   try {
     db.exec("ALTER TABLE clips ADD COLUMN words_per_burst INTEGER DEFAULT 2;");
   } catch {}
+  try {
+    db.exec("ALTER TABLE clips ADD COLUMN title_options TEXT;");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE clips ADD COLUMN caption_options TEXT;");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE clips ADD COLUMN layout TEXT DEFAULT 'blur_bg';");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE clips ADD COLUMN hook_overlay INTEGER DEFAULT 1;");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE clips ADD COLUMN error_message TEXT;");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE projects ADD COLUMN niche TEXT DEFAULT 'high_energy';");
+  } catch {}
 }
 
 export interface ProjectRecord {
@@ -209,6 +227,7 @@ export interface ProjectRecord {
   progress: number;
   stage_message: string;
   error_message: string | null;
+  niche?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -227,12 +246,17 @@ export interface ClipRecord {
   crop_offset_x: number;
   video_path: string | null;
   thumbnail_path: string | null;
-  status: 'draft' | 'approved' | 'rejected' | 'rendering';
+  status: 'draft' | 'approved' | 'rejected' | 'rendering' | 'failed';
   caption_preset?: string | null;
   caption_active_color?: string | null;
   caption_base_color?: string | null;
   words_per_burst?: number | null;
   assigned_channel_id?: string | null;
+  title_options?: string | null;
+  caption_options?: string | null;
+  layout?: 'blur_bg' | 'crop';
+  hook_overlay?: number;
+  error_message?: string | null;
   created_at: string;
   updated_at: string;
 }

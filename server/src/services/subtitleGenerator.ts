@@ -11,6 +11,8 @@ export interface SubtitleOptions {
   baseColorHex?: string;      // e.g. '#FFFFFF'
   outlineColorHex?: string;   // e.g. '#000000'
   animation?: 'bounce' | 'glow' | 'simple';
+  hookText?: string;          // Spoken hook line to burn in top banner
+  includeHookOverlay?: boolean; // Default: true (shows for first 2.5s)
 }
 
 /**
@@ -134,7 +136,7 @@ export function generateAssSubtitles(
     }
   }
 
-  // Generate ASS script header with high-impact font and heavy outline
+  // Generate ASS script header with high-impact font, heavy outline, and optional Hook Banner
   const header = `[Script Info]
 Title: ShortsForge Kinetic Captions
 ScriptType: v4.00+
@@ -147,12 +149,23 @@ PlayResY: 1920
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Impact,${fontSize},${baseColor},&H00000000,${outlineColor},&H80000000,-1,0,0,0,100,100,1,0,1,10,4,2,60,60,560,1
+Style: HookBanner,Impact,74,&H0000FFFF,&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,8,4,8,40,40,220,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
   const dialogueLines: string[] = [];
+
+  // 1. Burn-in Hook Headline Banner for the first 2.5 seconds (stops scrollers instantly)
+  if (options?.includeHookOverlay !== false && options?.hookText && options.hookText.trim()) {
+    const cleanHook = options.hookText.replace(/[\r\n\t]+/g, ' ').replace(/[{}]/g, '').trim().toUpperCase();
+    if (cleanHook.length > 0) {
+      dialogueLines.push(
+        `Dialogue: 1,0:00:00.00,0:00:02.50,HookBanner,,0,0,0,,{\\b1\\c&H0000FFFF&\\3c&H00000000&\\bord8\\shad3}${cleanHook}`
+      );
+    }
+  }
 
   // For each group, generate the active-word highlight events with kinetic bounce animation
   for (const group of groups) {

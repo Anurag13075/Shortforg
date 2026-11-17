@@ -25,6 +25,7 @@ interface HomePageProps {
 export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) => {
   const [url, setUrl] = useState('');
   const [inputMode, setInputMode] = useState<'url' | 'upload'>('url');
+  const [niche, setNiche] = useState<string>('high_energy');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'completed' | 'processing' | 'failed'>('all');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,6 +33,15 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+
+  const NICHE_OPTIONS = [
+    { id: 'high_energy', label: '🔥 High Energy & Hooks', desc: 'Explosive curiosity gaps, confessions, twists' },
+    { id: 'storytelling', label: '📖 Storytelling & Drama', desc: 'Narrative arcs, personal struggles, journeys' },
+    { id: 'podcast', label: '🎙️ Podcast & Debates', desc: 'Hard-hitting arguments, insights, candid talk' },
+    { id: 'gaming', label: '🎮 Gaming & Clutch', desc: 'Crazy plays, funny glitches, hype reactions' },
+    { id: 'comedy', label: '😂 Comedy & Punchlines', desc: 'Witty remarks, roasts, funny moments' },
+    { id: 'finance_tech', label: '💡 Tech & Business', desc: 'Insider truth, breakdowns, tactical advice' }
+  ];
 
   const fetchProjects = async () => {
     try {
@@ -93,10 +103,10 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
 
     setIsSubmitting(true);
     try {
-      const newProj = await api.createProject(url.trim());
+      const newProj = await api.createProject(url.trim(), niche);
       setUrl('');
       setActiveJobId(newProj.id);
-      onToast('Started pipeline: downloading & analyzing viral hooks...', 'info');
+      onToast(`Started pipeline in ${NICHE_OPTIONS.find(n => n.id === niche)?.label || niche} tone...`, 'info');
       await fetchProjects();
     } catch (err: any) {
       onToast(`Error creating project: ${err.message}`, 'error');
@@ -226,6 +236,31 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
               <Upload className="w-3.5 h-3.5 text-blue-400" />
               <span>Upload Video File</span>
             </button>
+          </div>
+        </div>
+
+        {/* Niche & Tone Preset Bar */}
+        <div className="max-w-xl mx-auto pt-1 pb-1">
+          <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 mb-1.5 px-1">
+            <span className="font-semibold text-zinc-300">CONTENT TONE & NICHE:</span>
+            <span className="text-zinc-500">Customizes hooks & titles</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            {NICHE_OPTIONS.map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                onClick={() => setNiche(n.id)}
+                className={`px-2.5 py-1.5 rounded-lg border text-left text-xs transition-all ${
+                  niche === n.id
+                    ? 'bg-amber-400/10 border-amber-400/50 text-amber-300 font-semibold shadow-sm'
+                    : 'bg-[#111218] border-white/[0.06] text-zinc-400 hover:text-zinc-200 hover:border-white/10'
+                }`}
+                title={n.desc}
+              >
+                <div className="text-[11px] font-mono truncate">{n.label}</div>
+              </button>
+            ))}
           </div>
         </div>
 

@@ -109,7 +109,7 @@ async function runYtDlpWithClient(
 
     const args = [
       '--js-runtimes', 'node',
-      '-f', 'best[ext=mp4]/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+      '-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b',
       '--merge-output-format', 'mp4',
       '--extractor-args', `youtube:player_client=${playerClient}`,
       '--no-playlist',
@@ -190,7 +190,9 @@ async function downloadWithCobalt(
   const cobaltInstances = [
     'https://api.cobalt.tools',
     'https://cobalt.api.scip.io',
-    'https://co.wuk.sh'
+    'https://co.wuk.sh',
+    'https://cobalt.kwiatekm.tokyo',
+    'https://instances.hyper.space'
   ];
 
   let streamUrl: string | null = null;
@@ -198,23 +200,33 @@ async function downloadWithCobalt(
 
   for (const instance of cobaltInstances) {
     try {
+      // Try v10 API first
+      const v10Res = await axios.post(
+        instance,
+        { url: youtubeUrl, videoQuality: '1080' },
+        {
+          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+          timeout: 15000
+        }
+      ).catch(() => null);
+
+      if (v10Res?.data?.url) {
+        streamUrl = v10Res.data.url;
+        if (v10Res.data.filename) videoTitle = v10Res.data.filename.replace(/\.mp4$/i, '');
+        break;
+      }
+
+      // Fallback to legacy v7 API
       const res = await axios.post(
         `${instance}/api/json`,
+        { url: youtubeUrl, vQuality: '1080', filenamePattern: 'classic' },
         {
-          url: youtubeUrl,
-          vQuality: '1080',
-          filenamePattern: 'classic'
-        },
-        {
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          },
-          timeout: 25000
+          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+          timeout: 15000
         }
-      );
+      ).catch(() => null);
 
-      if (res.data?.url) {
+      if (res?.data?.url) {
         streamUrl = res.data.url;
         if (res.data.filename) {
           videoTitle = res.data.filename.replace(/\.mp4$/i, '');
@@ -381,13 +393,13 @@ export async function downloadYouTubeVideo(
   // 2. Self-Hosted yt-dlp Engine with multi-client spoofing
   const ytDlpCmd = await ensureYtDlpBinary();
 
-  // Try android,web with Node.js n-challenge solver (bypasses bot verification and extracts formats), then android, then tv
-  const clientsToTry = ['android,web', 'android', 'tv,android', 'web'];
+  // Try android,web with Node.js n-challenge solver, then ios, then android, then tv, then web
+  const clientsToTry = ['android,web', 'ios,android', 'android', 'tv,android', 'web'];
   let lastYtDlpError: string = '';
 
   for (const client of clientsToTry) {
     try {
-      onProgress?.(12, `Attempting YouTube stream extraction (${client} mobile engine)...`);
+      onProgress?.(12, `Attempting YouTube stream extraction (${client} engine)...`);
       return await runYtDlpWithClient(ytDlpCmd, youtubeUrl, outputDir, client, onProgress);
     } catch (err: any) {
       console.warn(`yt-dlp with client ${client} failed:`, err.message);
@@ -411,5 +423,5 @@ export async function downloadYouTubeVideo(
     }
   }
 
-  throw new Error(`Download engine could not fetch video: ${lastYtDlpError || 'YouTube stream blocked'}. If this video requires authentication, paste a direct video link or try another YouTube link.`);
+  throw new Error(`Download engine could not fetch video: ${lastYtDlpError || 'YouTube blocked cloud datacenter IP'}. Tip: Export cookies using YouTube Cookie Vault or switch to the "Upload Video File" tab above to process your video directly without YouTube bot challenges.`);
 }

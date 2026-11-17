@@ -29,10 +29,10 @@ projectsRouter.get('/', (_req: Request, res: Response) => {
 });
 
 /**
- * POST /api/projects/sync - Restore projects from client vault (preserves projects across container redeployments)
+ * POST /api/projects/sync - Restore projects and clips from client vault (preserves data across container redeployments)
  */
 projectsRouter.post('/sync', (req: Request, res: Response) => {
-  const { projects } = req.body;
+  const { projects, clips } = req.body;
   if (!Array.isArray(projects) || projects.length === 0) {
     return res.json({ success: true, synced: 0 });
   }
@@ -46,18 +46,19 @@ projectsRouter.post('/sync', (req: Request, res: Response) => {
       const existing = db.prepare('SELECT id FROM projects WHERE id = ?').get(p.id);
       if (!existing) {
         db.prepare(`
-          INSERT INTO projects (id, youtube_url, title, duration, source_video_path, status, progress, stage_message, error_message, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO projects (id, youtube_url, title, duration, source_video_path, status, progress, stage_message, error_message, niche, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           p.id,
           p.youtube_url,
           p.title || null,
           p.duration || 0,
           p.source_video_path || null,
-          p.status || 'failed',
-          p.progress || 0,
+          p.status || 'completed',
+          p.progress || 100,
           p.stage_message || '',
           p.error_message || null,
+          p.niche || 'high_energy',
           p.created_at || now,
           p.updated_at || now
         );
@@ -68,14 +69,70 @@ projectsRouter.post('/sync', (req: Request, res: Response) => {
     }
   }
 
+  // Restore clips associated with these projects
+  if (Array.isArray(clips) && clips.length > 0) {
+    for (const c of clips) {
+      if (!c.id || !c.project_id) continue;
+      try {
+        const existing = db.prepare('SELECT id FROM clips WHERE id = ?').get(c.id);
+        if (!existing) {
+          db.prepare(`
+            INSERT INTO clips (
+              id, project_id, title, caption, hashtags, hook_line, virality_score, reason,
+              start_time, end_time, crop_offset_x, video_path, thumbnail_path, status,
+              caption_preset, caption_active_color, caption_base_color, words_per_burst,
+              assigned_channel_id, title_options, caption_options, layout, hook_overlay, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            c.id,
+            c.project_id,
+            c.title,
+            c.caption || null,
+            c.hashtags || null,
+            c.hook_line || null,
+            c.virality_score || 85,
+            c.reason || null,
+            c.start_time || 0,
+            c.end_time || 30,
+            c.crop_offset_x || 0,
+            c.video_path || null,
+            c.thumbnail_path || null,
+            c.status || 'draft',
+            c.caption_preset || 'hormozi_gold',
+            c.caption_active_color || '#FFE600',
+            c.caption_base_color || '#FFFFFF',
+            c.words_per_burst || 2,
+            c.assigned_channel_id || null,
+            typeof c.title_options === 'string' ? c.title_options : JSON.stringify(c.title_options || [c.title]),
+            typeof c.caption_options === 'string' ? c.caption_options : JSON.stringify(c.caption_options || [c.caption]),
+            c.layout || 'blur_bg',
+            c.hook_overlay !== undefined ? c.hook_overlay : 1,
+            c.created_at || now,
+            c.updated_at || now
+          );
+        }
+      } catch (err: any) {
+        console.warn('Clip sync warning:', err.message);
+      }
+    }
+  }
+
   res.json({ success: true, synced });
+});
+
+/**
+ * GET /api/projects/:id/logs - Get real-time terminal logs for project
+ */
+projectsRouter.get('/:id/logs', (req: Request, res: Response) => {
+  const projectId = String(req.params.id);
+  res.json({ success: true, data: PipelineService.getLogs(projectId) });
 });
 
 /**
  * POST /api/projects - Create a new project and kick off background processing
  */
 projectsRouter.post('/', (req: Request, res: Response) => {
-  const { youtubeUrl } = req.body;
+  const { youtubeUrl, niche } = req.body;
 
   if (!youtubeUrl || typeof youtubeUrl !== 'string' || !youtubeUrl.trim()) {
     return res.status(400).json({ success: false, error: 'youtubeUrl is required' });
@@ -91,12 +148,13 @@ projectsRouter.post('/', (req: Request, res: Response) => {
 
   const projectId = uuidv4();
   const now = new Date().toISOString();
+  const projectNiche = niche || 'high_energy';
 
   try {
     db.prepare(`
-      INSERT INTO projects (id, youtube_url, status, progress, stage_message, created_at, updated_at)
-      VALUES (?, ?, 'pending', 0, 'Project created. Initializing pipeline...', ?, ?)
-    `).run(projectId, cleanUrl, now, now);
+      INSERT INTO projects (id, youtube_url, niche, status, progress, stage_message, created_at, updated_at)
+      VALUES (?, ?, ?, 'pending', 0, 'Project created. Initializing pipeline...', ?, ?)
+    `).run(projectId, cleanUrl, projectNiche, now, now);
 
     // Launch pipeline in background asynchronously
     setImmediate(() => {

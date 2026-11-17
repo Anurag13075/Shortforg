@@ -1,6 +1,7 @@
 import Groq from 'groq-sdk';
 import { CONFIG } from '../config.js';
 import { WordTimestamp } from './transcriber.js';
+import { snapToSentenceBoundaries } from './boundarySnapper.js';
 
 export interface ViralMoment {
   start: number;
@@ -9,20 +10,32 @@ export interface ViralMoment {
   reason: string;
   hook_line: string;
   title: string;
+  title_options: string[];
   caption: string;
+  caption_options: string[];
   hashtags: string[];
 }
+
+const NICHE_PROMPTS: Record<string, string> = {
+  high_energy: 'Highlight explosive hooks, shocking confessions, dramatic confrontations, and high-retention twists.',
+  storytelling: 'Highlight compelling personal stories, relatable journeys, unexpected turns, and dramatic revelations.',
+  gaming: 'Highlight clutch plays, hilarious fails, insane reactions, and peak gameplay hype.',
+  podcast: 'Highlight thought-provoking debates, raw personal opinions, and high-value takeaways.',
+  comedy: 'Highlight peak comedic timing, sarcastic roasts, funny punchlines, and relatable moments.',
+  finance_tech: 'Highlight counter-intuitive advice, insider industry secrets, and practical actionable insights.'
+};
 
 /**
  * Uses Groq LLMs to analyze transcript timestamps and select the highest-retention,
  * hyper-specific viral moments for 9:16 vertical YouTube Shorts.
- * Every title, hook, and caption is strictly grounded in the exact dialogue of the clip.
+ * Every clip is snapped to natural sentence boundaries so dialogue is never cut off mid-thought.
  */
 export async function pickViralMoments(
   fullText: string,
   words: WordTimestamp[],
   videoDuration: number,
-  targetCount: number = 8
+  targetCount: number = 8,
+  niche: string = 'high_energy'
 ): Promise<ViralMoment[]> {
   const apiKey = CONFIG.GROQ_API_KEY;
   if (!apiKey) {
@@ -47,8 +60,7 @@ export async function pickViralMoments(
     rawSlices.push({ start, end, text });
   }
 
-  // If transcript is long, sample at most 22 chunks across the video timeline.
-  // 22 chunks * ~60 words = ~1,300 words (~1,700 tokens), well under Groq's 7,000 ITPM limit.
+  // If transcript is long, sample at most 22 chunks across the video timeline (~1,300 words / ~1,700 tokens)
   let selectedSlices = rawSlices;
   if (rawSlices.length > 22) {
     const maxChunks = 22;
@@ -61,29 +73,35 @@ export async function pickViralMoments(
   }
 
   const timestampedChunks = selectedSlices.map((s) => `[${s.start}s - ${s.end}s]: ${s.text}`);
+  const nicheInstruction = NICHE_PROMPTS[niche] || NICHE_PROMPTS.high_energy;
 
   const systemPrompt = `You are an elite YouTube Shorts producer and virality editor.
 Your task is to analyze timestamped video transcripts and extract exactly ${targetCount} of the most viral, standalone moments for 9:16 vertical Shorts.
+CHANNEL TONE / NICHE: ${nicheInstruction}
 
 STRICT ACCURACY & CONTENT-MATCHING RULES (NO GENERIC AI SLOP):
-1. Clip Length: STRICTLY between 20 and 55 seconds (end - start must be between 20 and 55).
-2. The First 3 Seconds: Must open with an explosive hook, dramatic story start, controversy, or curiosity gap.
+1. Clip Length: Target 25 to 55 seconds (must be a self-contained story or thought).
+2. The First 3 Seconds: Must open with an explosive hook, dramatic question, or intrigue gap.
 3. TITLE MUST MATCH THE EXACT CONTENT IN THE CLIP:
    - The title MUST name the specific subject, action, person, or question discussed in THAT exact clip.
    - Example good titles matching transcript: "I Got Fired For Automating My Job", "Why Don Threatened My Mom", "Honeydeck School Shutting Down?", "Paying $20 To Pass AI Interviews".
    - STRICTLY FORBIDDEN: Do NOT generate generic self-help clichés like "Why 99% Of People Fail", "The Truth Nobody Tells You", "The Secret To Success", or "Never Give Up" unless the speaker is literally saying those exact words.
    - Under 70 characters, no quotation marks.
+   - Provide 3 distinct title options:
+     * Option 1: Direct spoken quote hook
+     * Option 2: Curiosity gap / intrigue
+     * Option 3: Conflict or revelation
 4. HOOK LINE MUST BE THE LITERAL SPOKEN HOOK:
    - 3 to 8 words capturing the actual first sentence or statement spoken at the start of this clip.
 5. CAPTION MUST SUMMARIZE THE EXACT SCENE:
    - 2-3 sentences describing exactly what happens or is revealed in this specific clip.
    - Include a direct quote from the speaker in quotation marks.
    - Include an engaging question directly tied to the topic.
+   - Provide 2 caption options (one punchy & one narrative).
 6. HASHTAGS:
    - 5 hashtags matching the real subject (e.g. #storytime, #tech, #career, #coding, #school, #podcast, etc.) rather than generic tags.
-7. Clean In/Out Boundaries:
-   - Start cleanly at the beginning of a sentence.
-   - End cleanly after a punchline, realization, or completed thought.
+7. Clean Thought Boundaries:
+   - Each moment must begin where a thought begins and conclude where a realization, punchline, or point is completed.
 
 RETURN VALID JSON WITH THIS EXACT STRUCTURE:
 {
@@ -95,14 +113,23 @@ RETURN VALID JSON WITH THIS EXACT STRUCTURE:
       "reason": "Direct emotional confrontation in the first 5 seconds with a surprising resolution.",
       "hook_line": "DON THREATENED ME, MOM SAVED ME",
       "title": "Why Don Threatened My Mom",
+      "title_options": [
+        "Why Don Threatened My Mom",
+        "The Terrifying Encounter At The Door",
+        "Mom Didn\\'t Flinch For A Second"
+      ],
       "caption": "The terrifying moment things almost went too far. 'She looked him dead in the eye and didn\\'t blink.' Would you have stood your ground?",
+      "caption_options": [
+        "The terrifying moment things almost went too far. 'She looked him dead in the eye and didn\\'t blink.' Would you have stood your ground?",
+        "Don thought he could intimidate us until Mom stepped in. Never underestimate a mother protecting her kid. Drop your thoughts below!"
+      ],
       "hashtags": ["#shorts", "#storytime", "#truestory", "#family", "#podcast"]
     }
   ]
 }`;
 
   const userPrompt = `Video Duration: ${videoDuration.toFixed(1)} seconds.
-Analyze this timestamped transcript and select ${targetCount} top viral standalone moments (each 20-55s duration). Ensure every title and description matches what is actually said in that excerpt:
+Analyze this timestamped transcript and select ${targetCount} top viral standalone moments (each 25-55s duration). Ensure every title and description matches what is actually said in that excerpt:
 
 ${timestampedChunks.join('\n\n')}`;
 
@@ -152,28 +179,18 @@ ${timestampedChunks.join('\n\n')}`;
     throw new Error('LLM did not return an array of viral moments in JSON.');
   }
 
-  // Validate and sanitize each moment
+  // Validate, snap to natural sentence boundaries, and sanitize each moment
   const validatedMoments: ViralMoment[] = [];
   for (const m of momentsRaw) {
-    let start = parseFloat(m.start);
-    let end = parseFloat(m.end);
+    const rawStart = parseFloat(m.start);
+    const rawEnd = parseFloat(m.end);
 
-    if (isNaN(start) || isNaN(end) || start >= end) {
+    if (isNaN(rawStart) || isNaN(rawEnd) || rawStart >= rawEnd) {
       continue;
     }
 
-    start = Math.max(0, start);
-    end = Math.min(videoDuration, end);
-
-    // Ensure clip duration is between 15s and 60s
-    let duration = end - start;
-    if (duration < 15) {
-      end = Math.min(videoDuration, start + 30);
-      duration = end - start;
-    }
-    if (duration > 60) {
-      end = start + 58;
-    }
+    // Snap to natural sentence beginnings and conclusions so words are never cut off
+    const snapped = snapToSentenceBoundaries(rawStart, rawEnd, words, videoDuration, 22, 58);
 
     const title = (m.title || 'Untitled Short')
       .replace(/["'\\]/g, '')
@@ -181,13 +198,27 @@ ${timestampedChunks.join('\n\n')}`;
       .trim()
       .substring(0, 70);
 
+    const titleOptions: string[] = Array.isArray(m.title_options) && m.title_options.length > 0
+      ? m.title_options.map((t: string) => String(t).replace(/["'\\]/g, '').trim().substring(0, 70))
+      : [title];
+    if (!titleOptions.includes(title)) {
+      titleOptions.unshift(title);
+    }
+
     const hook_line = (m.hook_line || title)
       .replace(/["'\\]/g, '')
       .replace(/\s+/g, ' ')
       .trim()
       .substring(0, 45);
 
-    const caption = (m.caption || title).trim().substring(0, 300);
+    const caption = (m.caption || title).trim().substring(0, 400);
+
+    const captionOptions: string[] = Array.isArray(m.caption_options) && m.caption_options.length > 0
+      ? m.caption_options.map((c: string) => String(c).trim().substring(0, 400))
+      : [caption];
+    if (!captionOptions.includes(caption)) {
+      captionOptions.unshift(caption);
+    }
 
     let hashtags = m.hashtags;
     if (typeof hashtags === 'string') {
@@ -202,13 +233,15 @@ ${timestampedChunks.join('\n\n')}`;
     }
 
     validatedMoments.push({
-      start: Math.round(start * 10) / 10,
-      end: Math.round(end * 10) / 10,
+      start: snapped.start,
+      end: snapped.end,
       virality_score: Math.min(100, Math.max(1, parseInt(m.virality_score || '85', 10))),
       reason: m.reason || 'High retention potential and engaging opening hook.',
       hook_line,
       title,
+      title_options: titleOptions.slice(0, 3),
       caption,
+      caption_options: captionOptions.slice(0, 2),
       hashtags: hashtags.slice(0, 5)
     });
   }
@@ -219,12 +252,19 @@ ${timestampedChunks.join('\n\n')}`;
 }
 
 /**
- * Regenerates hyper-specific title, hook, and caption for an individual clip
+ * Regenerates hyper-specific title options, hook, and caption for an individual clip
  * based on its exact spoken transcript segment.
  */
 export async function regenerateClipMetadata(
   clipTranscriptText: string
-): Promise<{ title: string; hook_line: string; caption: string; hashtags: string[] }> {
+): Promise<{
+  title: string;
+  title_options: string[];
+  hook_line: string;
+  caption: string;
+  caption_options: string[];
+  hashtags: string[];
+}> {
   const apiKey = CONFIG.GROQ_API_KEY;
   if (!apiKey) {
     throw new Error('GROQ_API_KEY is not configured in .env');
@@ -240,15 +280,21 @@ EXACT CLIP TRANSCRIPT:
 
 RULES:
 1. Title: Under 70 characters. Must describe the exact topic, question, or story in the transcript (e.g. "I Sold My First Car At 16"). NO generic clichés.
+   Provide 3 distinct title options:
+   - Option 1: Direct quote / spoken hook
+   - Option 2: Intrigue / curiosity gap
+   - Option 3: Action / revelation
 2. Hook Line: 3-8 words capturing the first spoken sentence.
-3. Caption: 2-3 sentences summarizing the exact scene with a direct quote.
+3. Caption: 2-3 sentences summarizing the exact scene with a direct quote. Provide 2 caption options.
 4. Hashtags: 5 specific tags matching the topic.
 
 RETURN STRICT JSON:
 {
   "title": "...",
+  "title_options": ["...", "...", "..."],
   "hook_line": "...",
   "caption": "...",
+  "caption_options": ["...", "..."],
   "hashtags": ["#tag1", "#tag2", "#tag3", "#tag4", "#tag5"]
 }`;
 
@@ -279,10 +325,24 @@ RETURN STRICT JSON:
   }
 
   const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
+  const title = (parsed.title || 'Untitled Short').replace(/["'\\]/g, '').trim().substring(0, 70);
+  const titleOptions: string[] = Array.isArray(parsed.title_options) && parsed.title_options.length > 0
+    ? parsed.title_options.map((t: string) => String(t).replace(/["'\\]/g, '').trim().substring(0, 70))
+    : [title];
+  if (!titleOptions.includes(title)) titleOptions.unshift(title);
+
+  const caption = (parsed.caption || '').trim().substring(0, 400);
+  const captionOptions: string[] = Array.isArray(parsed.caption_options) && parsed.caption_options.length > 0
+    ? parsed.caption_options.map((c: string) => String(c).trim().substring(0, 400))
+    : [caption];
+  if (!captionOptions.includes(caption)) captionOptions.unshift(caption);
+
   return {
-    title: (parsed.title || 'Untitled Short').replace(/["'\\]/g, '').trim().substring(0, 70),
+    title,
+    title_options: titleOptions.slice(0, 3),
     hook_line: (parsed.hook_line || parsed.title || 'HOOK').replace(/["'\\]/g, '').trim().substring(0, 45),
-    caption: (parsed.caption || '').trim().substring(0, 300),
+    caption,
+    caption_options: captionOptions.slice(0, 2),
     hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags.slice(0, 5) : ['#shorts', '#viral']
   };
 }

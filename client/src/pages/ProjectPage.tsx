@@ -33,6 +33,8 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 }) => {
   const [project, setProject] = useState<Project | null>(null);
   const [clips, setClips] = useState<Clip[]>([]);
+  const [logs, setLogs] = useState<Array<{ timestamp: string; level: string; message: string }>>([]);
+  const [showLogs, setShowLogs] = useState(true);
   const [filter, setFilter] = useState<'all' | 'approved' | 'scheduled' | 'draft' | 'rejected'>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -51,6 +53,8 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
       const data = await api.getProject(projectId);
       setProject(data);
       setClips(data.clips || []);
+      const fetchedLogs = await api.getProjectLogs(projectId).catch(() => []);
+      if (Array.isArray(fetchedLogs)) setLogs(fetchedLogs);
     } catch (err: any) {
       onToast(`Failed to load project: ${err.message}`, 'error');
     } finally {
@@ -78,9 +82,15 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
           : null
       );
 
-      if (update.status === 'completed') {
+      if (update.log) {
+        setLogs((prev) => [...prev, update.log]);
+      }
+
+      if (update.status === 'completed' || update.status === 'failed') {
         fetchProjectDetails();
-        onToast('All clips rendered successfully!', 'success');
+        if (update.status === 'completed') {
+          onToast('All clips rendered successfully!', 'success');
+        }
       }
     });
 
@@ -102,6 +112,10 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 
   const handleClipUpdate = (updatedClip: Clip) => {
     setClips((prev) => prev.map((c) => (c.id === updatedClip.id ? updatedClip : c)));
+  };
+
+  const handleClipDelete = (clipId: string) => {
+    setClips((prev) => prev.filter((c) => c.id !== clipId));
   };
 
   const handleBulkSchedule = async () => {
@@ -285,6 +299,47 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
         </div>
       )}
 
+      {/* Live Studio Terminal / Pipeline Logs */}
+      {logs.length > 0 && (
+        <div className="rounded-xl border border-white/[0.08] bg-[#0c0d14] overflow-hidden shadow-lg">
+          <div
+            onClick={() => setShowLogs(!showLogs)}
+            className="px-4 py-2 bg-[#12131c] border-b border-white/[0.06] flex items-center justify-between cursor-pointer hover:bg-[#161824] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-mono font-semibold text-zinc-200">Live Studio Engine Logs</span>
+              <span className="text-[10px] font-mono text-zinc-500">({logs.length} events)</span>
+            </div>
+            <span className="text-[11px] font-mono text-zinc-400 hover:text-white">
+              {showLogs ? 'Hide Logs ▲' : 'Show Logs ▼'}
+            </span>
+          </div>
+          {showLogs && (
+            <div className="p-3 max-h-48 overflow-y-auto space-y-1 font-mono text-[11px] leading-relaxed">
+              {logs.map((log, i) => (
+                <div key={i} className="flex items-start gap-2.5">
+                  <span className="text-zinc-600 shrink-0 select-none">[{log.timestamp}]</span>
+                  <span
+                    className={
+                      log.level === 'error'
+                        ? 'text-rose-400 font-semibold'
+                        : log.level === 'warn'
+                        ? 'text-amber-300'
+                        : log.level === 'success'
+                        ? 'text-emerald-300'
+                        : 'text-zinc-300'
+                    }
+                  >
+                    {log.message}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Filter Tabs */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 p-1 rounded-lg bg-[#111218] border border-white/[0.08]">
@@ -370,6 +425,7 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
               clip={clip}
               channels={channels}
               onUpdate={handleClipUpdate}
+              onDelete={handleClipDelete}
               onToast={onToast}
             />
           ))}

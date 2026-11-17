@@ -133,8 +133,29 @@ export class SchedulerService {
   }
 
   /**
+   * Helper to construct a UTC Date for an exact Indian Standard Time (IST, UTC+5:30) slot
+   */
+  static getIstSlotDate(dayOffset: number, istHour: number, istMinute: number = 0): Date {
+    const now = new Date();
+    const utcMs = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const istOffsetMs = 5.5 * 3600 * 1000;
+    const istNow = new Date(utcMs + istOffsetMs);
+
+    const targetYear = istNow.getFullYear();
+    const targetMonth = istNow.getMonth();
+    const targetDay = istNow.getDate() + dayOffset;
+
+    const targetUtcMs = Date.UTC(targetYear, targetMonth, targetDay, istHour, istMinute, 0, 0) - istOffsetMs;
+    return new Date(targetUtcMs);
+  }
+
+  /**
    * Auto-schedule approved clips that are not yet in the queue
-   * Spreads them 1-2 per day at optimal Shorts engagement windows (10:00 AM & 6:00 PM)
+   * Spreads them 1 clip per slot across Indian Standard Time (IST) peak consumption windows:
+   * - Slot 1: 09:00 AM IST (Morning boost)
+   * - Slot 2: 01:30 PM IST (Lunch prime)
+   * - Slot 3: 06:30 PM IST (Evening viral)
+   * - Slot 4: 09:00 PM IST (Late evening prime)
    * Supports optional filtering by projectId
    */
   static autoScheduleApproved(channelId: string, clipsPerDay: number = 2, projectId?: string): { scheduledCount: number } {
@@ -157,26 +178,46 @@ export class SchedulerService {
       return { scheduledCount: 0 };
     }
 
-    // Determine starting date: find the latest scheduled item or start tomorrow
+    // Peak IST slots: [Hour, Minute]
+    const istSlots: [number, number][] = clipsPerDay === 1
+      ? [[18, 30]] // 6:30 PM IST
+      : clipsPerDay === 2
+      ? [[13, 30], [18, 30]] // 1:30 PM and 6:30 PM IST
+      : clipsPerDay === 3
+      ? [[9, 0], [13, 30], [18, 30]] // 9:00 AM, 1:30 PM, 6:30 PM IST
+      : [[9, 0], [13, 30], [18, 30], [21, 0]]; // 9:00 AM, 1:30 PM, 6:30 PM, 9:00 PM IST
+
+    // Find the latest scheduled post to continue spacing from there
     const latestQueue = db.prepare(`
       SELECT scheduled_time FROM schedule_queue
       WHERE channel_id = ? AND status = 'scheduled'
       ORDER BY scheduled_time DESC LIMIT 1
     `).get(channelId) as { scheduled_time: string } | undefined;
 
-    let cursorDate = new Date();
-    if (latestQueue && new Date(latestQueue.scheduled_time) > cursorDate) {
-      cursorDate = new Date(latestQueue.scheduled_time);
-      cursorDate.setDate(cursorDate.getDate() + 1);
-    } else {
-      cursorDate.setDate(cursorDate.getDate() + 1); // Start tomorrow
+    let dayOffset = 0;
+    const now = new Date();
+
+    if (latestQueue) {
+      const latestDate = new Date(latestQueue.scheduled_time);
+      const diffDays = Math.ceil((latestDate.getTime() - now.getTime()) / (24 * 3600 * 1000));
+      dayOffset = Math.max(0, diffDays);
     }
-    cursorDate.setHours(10, 0, 0, 0); // 10:00 AM
 
-    const slotsPerDay = clipsPerDay === 1 ? [14] : [10, 18]; // 10:00 AM and 6:00 PM
-    let currentSlotIdx = 0;
+    let slotIdx = 0;
+    // Find the first upcoming slot today or move to tomorrow
+    while (slotIdx < istSlots.length) {
+      const candidateDate = this.getIstSlotDate(dayOffset, istSlots[slotIdx][0], istSlots[slotIdx][1]);
+      if (candidateDate.getTime() > now.getTime() + 15 * 60 * 1000) {
+        break;
+      }
+      slotIdx++;
+    }
+    if (slotIdx >= istSlots.length) {
+      dayOffset++;
+      slotIdx = 0;
+    }
 
-    const now = new Date().toISOString();
+    const nowIso = new Date().toISOString();
     let scheduledCount = 0;
 
     const insertStmt = db.prepare(`
@@ -186,23 +227,28 @@ export class SchedulerService {
 
     db.transaction(() => {
       for (const clip of unscheduledClips) {
-        const slotHour = slotsPerDay[currentSlotIdx];
-        cursorDate.setHours(slotHour, 0, 0, 0);
+        const [slotH, slotM] = istSlots[slotIdx];
+        const targetDate = this.getIstSlotDate(dayOffset, slotH, slotM);
 
         insertStmt.run(
           uuidv4(),
           clip.id,
           channelId,
-          cursorDate.toISOString(),
-          now,
-          now
+          targetDate.toISOString(),
+          nowIso,
+          nowIso
         );
 
+        db.prepare("UPDATE clips SET status = 'scheduled', assigned_channel_id = ?, updated_at = ? WHERE id = ?")
+          .run(channelId, nowIso, clip.id);
+
         scheduledCount++;
-        currentSlotIdx++;
-        if (currentSlotIdx >= slotsPerDay.length) {
-          currentSlotIdx = 0;
-          cursorDate.setDate(cursorDate.getDate() + 1);
+
+        // Advance to next slot
+        slotIdx++;
+        if (slotIdx >= istSlots.length) {
+          slotIdx = 0;
+          dayOffset++;
         }
       }
     })();

@@ -9,28 +9,40 @@ import { transcribeAudio } from './transcriber.js';
 import { pickViralMoments, ViralMoment } from './momentPicker.js';
 import { generateAssSubtitles, CaptionPreset } from './subtitleGenerator.js';
 
+export interface LogEntry {
+  timestamp: string;
+  level: 'info' | 'warn' | 'error' | 'success';
+  message: string;
+}
+
 export interface ReRenderOptions {
   cropOffsetX?: number;
+  startTime?: number;
+  endTime?: number;
+  layout?: 'blur_bg' | 'crop';
+  hookOverlay?: boolean;
   captionPreset?: CaptionPreset;
   captionActiveColor?: string;
   captionBaseColor?: string;
   wordsPerBurst?: number;
 }
 
-// In-memory event listeners for Server-Sent Events (SSE) live progress per project
+// In-memory event listeners and logs for Server-Sent Events (SSE) live progress per project
 type ProgressListener = (data: {
   projectId: string;
   status: string;
   progress: number;
   stageMessage: string;
   errorMessage?: string | null;
+  log?: LogEntry;
 }) => void;
 
 const listeners: Map<string, Set<ProgressListener>> = new Map();
+const projectLogs: Map<string, LogEntry[]> = new Map();
 
 export class PipelineService {
   /**
-   * Subscribe to live progress updates for a project
+   * Subscribe to live progress and log updates for a project
    */
   static subscribeProgress(projectId: string, listener: ProgressListener): () => void {
     if (!listeners.has(projectId)) {
@@ -47,6 +59,50 @@ export class PipelineService {
   }
 
   /**
+   * Get all accumulated logs for a project
+   */
+  static getLogs(projectId: string): LogEntry[] {
+    return projectLogs.get(projectId) || [];
+  }
+
+  /**
+   * Record a log entry and broadcast to SSE listeners
+   */
+  static addLog(projectId: string, level: LogEntry['level'], message: string) {
+    const timeStr = new Date().toLocaleTimeString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour12: false
+    });
+    const entry: LogEntry = {
+      timestamp: timeStr,
+      level,
+      message
+    };
+
+    if (!projectLogs.has(projectId)) {
+      projectLogs.set(projectId, []);
+    }
+    const list = projectLogs.get(projectId)!;
+    list.push(entry);
+    if (list.length > 200) list.shift();
+
+    const set = listeners.get(projectId);
+    if (set) {
+      for (const listener of set) {
+        try {
+          listener({
+            projectId,
+            status: 'processing',
+            progress: -1,
+            stageMessage: message,
+            log: entry
+          });
+        } catch {}
+      }
+    }
+  }
+
+  /**
    * Broadcast progress state to DB and active SSE listeners
    */
   static notifyProgress(
@@ -54,7 +110,8 @@ export class PipelineService {
     status: ProjectRecord['status'],
     progress: number,
     stageMessage: string,
-    errorMessage: string | null = null
+    errorMessage: string | null = null,
+    logLevel: LogEntry['level'] = 'info'
   ) {
     const now = new Date().toISOString();
     try {
@@ -66,6 +123,8 @@ export class PipelineService {
     } catch (e: any) {
       console.error('Failed to update project progress in DB:', e.message);
     }
+
+    this.addLog(projectId, logLevel, stageMessage);
 
     const set = listeners.get(projectId);
     if (set) {
@@ -79,11 +138,12 @@ export class PipelineService {
 
   /**
    * Run full pipeline in background:
-   * 1. Download
-   * 2. Transcribe (Groq Whisper)
-   * 3. LLM Viral Moments Selection
-   * 4. Multi-clip 9:16 rendering + ASS animated subtitles
-   * 5. Thumbnails generation
+   * 1. Download / Load video
+   * 2. Transcribe (Groq Whisper with word-level timestamps)
+   * 3. LLM Viral Moments Selection + Speech Sentence Snapping
+   * 4. Pre-create all clip records in DB
+   * 5. Isolated 1080p rendering for each clip (failures isolated, all clips processed)
+   * 6. High-contrast thumbnails
    */
   static async runProjectPipeline(projectId: string) {
     const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(projectId) as ProjectRecord | undefined;
@@ -95,6 +155,8 @@ export class PipelineService {
     }
 
     try {
+      this.addLog(projectId, 'info', `🚀 Starting ShortsForge autonomous studio pipeline for project ${projectId.slice(0, 8)}...`);
+
       // ----------------------------------------------------------------------
       // STEP 1: PREPARE SOURCE VIDEO (DOWNLOAD OR DIRECT FILE)
       // ----------------------------------------------------------------------
@@ -111,7 +173,7 @@ export class PipelineService {
           } catch {}
         }
       } else {
-        this.notifyProgress(projectId, 'downloading', 5, 'Downloading video stream...');
+        this.notifyProgress(projectId, 'downloading', 5, 'Downloading high-resolution video stream from YouTube...');
         const downloadResult = await downloadYouTubeVideo(
           project.youtube_url,
           projectDir,
@@ -138,16 +200,20 @@ export class PipelineService {
         `).run(title, duration, sourceVideoPath, new Date().toISOString(), projectId);
       }
 
+      this.addLog(projectId, 'success', `✅ Source video loaded: "${title}" (${Math.round(duration)}s)`);
+
       // ----------------------------------------------------------------------
       // STEP 2: EXTRACT AUDIO & TRANSCRIBE (GROQ WHISPER)
       // ----------------------------------------------------------------------
-      this.notifyProgress(projectId, 'transcribing', 35, 'Extracting audio for Whisper transcription...');
+      this.notifyProgress(projectId, 'transcribing', 35, 'Extracting 16kHz speech recognition audio stream...');
 
       const audioPath = path.join(projectDir, 'audio_extracted.mp3');
       await FFmpegService.extractAudio(sourceVideoPath!, audioPath);
 
-      this.notifyProgress(projectId, 'transcribing', 42, 'Transcribing with Groq Whisper (word timestamps)...');
+      this.notifyProgress(projectId, 'transcribing', 42, 'Transcribing full audio with Groq Whisper (word timestamps)...');
       const transcription = await transcribeAudio(audioPath);
+
+      this.addLog(projectId, 'success', `✅ Groq Whisper transcribed ${transcription.words.length} words with millisecond timestamps.`);
 
       // Save transcription to storage for inspection/debugging
       fs.writeFileSync(
@@ -157,90 +223,44 @@ export class PipelineService {
       );
 
       // ----------------------------------------------------------------------
-      // STEP 3: PICK VIRAL MOMENTS (GROQ LLM)
+      // STEP 3: PICK VIRAL MOMENTS & SNAP TO NATURAL SENTENCE BOUNDARIES
       // ----------------------------------------------------------------------
-      this.notifyProgress(projectId, 'analyzing', 52, 'Groq LLM is hunting for the best viral moments...');
+      const niche = project.niche || 'high_energy';
+      this.notifyProgress(projectId, 'analyzing', 52, `Groq AI analyzing hooks & storytelling narrative (${niche} niche)...`);
 
       const viralMoments = await pickViralMoments(
         transcription.text,
         transcription.words,
         duration,
-        8 // default 8 clips
+        8, // target 8 viral clips
+        niche
       );
 
-      // ----------------------------------------------------------------------
-      // STEP 4: RENDER 9:16 VERTICAL CLIPS & ANIMATED SUBTITLES & THUMBNAILS
-      // ----------------------------------------------------------------------
-      this.notifyProgress(projectId, 'rendering', 60, `Rendering ${viralMoments.length} vertical 9:16 Shorts with animated captions...`);
+      this.addLog(projectId, 'success', `🧠 Groq AI extracted ${viralMoments.length} viral standalone moments with clean sentence cuts.`);
 
+      // ----------------------------------------------------------------------
+      // STEP 4: PRE-CREATE ALL CLIP RECORDS IN SQLITE (SO ALL CLIPS APPEAR IN UI IMMEDIATELY)
+      // ----------------------------------------------------------------------
       // Clear any prior clips for this project if re-running
       try {
         db.prepare('DELETE FROM clips WHERE project_id = ?').run(projectId);
       } catch {}
 
       const totalMoments = viralMoments.length;
+      const clipIds: string[] = [];
+
       for (let i = 0; i < totalMoments; i++) {
         const moment = viralMoments[i];
         const clipId = uuidv4();
-        const clipProgressStart = 60 + Math.floor((i / totalMoments) * 35);
-
-        this.notifyProgress(
-          projectId,
-          'rendering',
-          clipProgressStart,
-          `Rendering Short #${i + 1}/${totalMoments}: "${moment.title}"...`
-        );
-
-        // 1. Generate ASS animated subtitles for this segment (Videocaptions.ai style kinetic pop)
-        const assPath = path.join(projectDir, `clip_${i + 1}_subtitles.ass`);
-        generateAssSubtitles(
-          transcription.words,
-          moment.start,
-          moment.end,
-          assPath,
-          {
-            preset: 'hormozi_gold',
-            activeColorHex: '#FFE600',
-            baseColorHex: '#FFFFFF',
-            wordsPerChunk: 2,
-            animation: 'bounce'
-          }
-        );
-
-        // 2. Render 9:16 cropped clip with FFmpeg
-        const videoOutputPath = path.join(projectDir, `short_${i + 1}_${clipId.substring(0, 8)}.mp4`);
-        await FFmpegService.renderClip({
-          sourceVideoPath: sourceVideoPath!,
-          startTime: moment.start,
-          endTime: moment.end,
-          cropOffsetXPercent: 0, // default center crop
-          assSubtitlePath: assPath,
-          outputPath: videoOutputPath
-        });
-
-        // 3. Generate high-contrast thumbnail with hook text overlay
-        const thumbOutputPath = path.join(projectDir, `thumb_${i + 1}_${clipId.substring(0, 8)}.jpg`);
-        const frameTimestamp = Math.min(moment.end, moment.start + 1.8);
-        try {
-          await FFmpegService.generateThumbnail({
-            sourceVideoPath: sourceVideoPath!,
-            captureTime: frameTimestamp,
-            hookText: moment.hook_line,
-            cropOffsetXPercent: 0,
-            outputPath: thumbOutputPath
-          });
-        } catch (thumbErr: any) {
-          console.warn(`Thumbnail generation warning for clip ${i + 1}: ${thumbErr.message}`);
-        }
-
-        // 4. Save Clip to SQLite
+        clipIds.push(clipId);
         const now = new Date().toISOString();
+
         db.prepare(`
           INSERT INTO clips (
             id, project_id, title, caption, hashtags, hook_line, virality_score, reason,
             start_time, end_time, crop_offset_x, caption_preset, caption_active_color, caption_base_color, words_per_burst,
-            video_path, thumbnail_path, status, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+            title_options, caption_options, layout, hook_overlay, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'hormozi_gold', '#FFE600', '#FFFFFF', 2, ?, ?, 'blur_bg', 1, 'rendering', ?, ?)
         `).run(
           clipId,
           projectId,
@@ -252,26 +272,116 @@ export class PipelineService {
           moment.reason,
           moment.start,
           moment.end,
-          0,
-          'hormozi_gold',
-          '#FFE600',
-          '#FFFFFF',
-          2,
-          videoOutputPath,
-          fs.existsSync(thumbOutputPath) ? thumbOutputPath : null,
+          JSON.stringify(moment.title_options || [moment.title]),
+          JSON.stringify(moment.caption_options || [moment.caption]),
           now,
           now
         );
       }
 
       // ----------------------------------------------------------------------
-      // STEP 5: COMPLETED!
+      // STEP 5: RENDER EACH CLIP INDEPENDENTLY (FAILURES ARE ISOLATED)
       // ----------------------------------------------------------------------
+      let renderedSuccessCount = 0;
+
+      for (let i = 0; i < totalMoments; i++) {
+        const moment = viralMoments[i];
+        const clipId = clipIds[i];
+        const clipProgressStart = 60 + Math.floor((i / totalMoments) * 35);
+
+        this.notifyProgress(
+          projectId,
+          'rendering',
+          clipProgressStart,
+          `Rendering Short #${i + 1}/${totalMoments}: "${moment.title}"...`
+        );
+
+        const videoOutputPath = path.join(projectDir, `short_${i + 1}_${clipId.substring(0, 8)}.mp4`);
+        const thumbOutputPath = path.join(projectDir, `thumb_${i + 1}_${clipId.substring(0, 8)}.jpg`);
+        const assPath = path.join(projectDir, `clip_${i + 1}_subtitles.ass`);
+
+        try {
+          // 1. Generate ASS animated subtitles with burned hook overlay (first 2.5s)
+          generateAssSubtitles(
+            transcription.words,
+            moment.start,
+            moment.end,
+            assPath,
+            {
+              preset: 'hormozi_gold',
+              activeColorHex: '#FFE600',
+              baseColorHex: '#FFFFFF',
+              wordsPerChunk: 2,
+              animation: 'bounce',
+              hookText: moment.hook_line,
+              includeHookOverlay: true
+            }
+          );
+
+          // 2. Render 1080p 9:16 vertical video with Hero Canvas blurred background
+          await FFmpegService.renderClip({
+            sourceVideoPath: sourceVideoPath!,
+            startTime: moment.start,
+            endTime: moment.end,
+            cropOffsetXPercent: 0,
+            layout: 'blur_bg',
+            assSubtitlePath: assPath,
+            outputPath: videoOutputPath
+          });
+
+          // 3. Generate high-contrast thumbnail
+          const frameTimestamp = Math.min(moment.end, moment.start + 1.8);
+          await FFmpegService.generateThumbnail({
+            sourceVideoPath: sourceVideoPath!,
+            captureTime: frameTimestamp,
+            hookText: moment.hook_line,
+            cropOffsetXPercent: 0,
+            layout: 'blur_bg',
+            outputPath: thumbOutputPath
+          }).catch(() => '');
+
+          // 4. Update Clip in DB to 'draft'
+          const now = new Date().toISOString();
+          db.prepare(`
+            UPDATE clips
+            SET video_path = ?, thumbnail_path = ?, status = 'draft', updated_at = ?
+            WHERE id = ?
+          `).run(
+            videoOutputPath,
+            fs.existsSync(thumbOutputPath) ? thumbOutputPath : null,
+            now,
+            clipId
+          );
+
+          renderedSuccessCount++;
+          this.addLog(projectId, 'success', `🎬 Short #${i + 1} ready: "${moment.title}" (${Math.round(moment.end - moment.start)}s)`);
+        } catch (clipErr: any) {
+          console.error(`Clip #${i + 1} rendering failed:`, clipErr.message);
+          this.addLog(projectId, 'warn', `⚠️ Short #${i + 1} rendering error: ${clipErr.message}`);
+
+          // Mark this individual clip failed, but CONTINUE loop so other clips render!
+          db.prepare(`
+            UPDATE clips
+            SET status = 'failed', error_message = ?, updated_at = ?
+            WHERE id = ?
+          `).run(clipErr.message, new Date().toISOString(), clipId);
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // STEP 6: COMPLETED!
+      // ----------------------------------------------------------------------
+      const finalMsg = renderedSuccessCount > 0
+        ? `Success! Generated ${renderedSuccessCount}/${totalMoments} viral Shorts ready for review.`
+        : 'All clip rendering attempts failed.';
+
       this.notifyProgress(
         projectId,
-        'completed',
+        renderedSuccessCount > 0 ? 'completed' : 'failed',
         100,
-        `Success! Generated ${totalMoments} viral Shorts ready for review.`
+        finalMsg,
+        renderedSuccessCount > 0 ? null : 'Failed to render clips',
+        renderedSuccessCount > 0 ? 'success' : 'error'
       );
     } catch (err: any) {
       console.error(`Pipeline error on project ${projectId}:`, err);
@@ -280,13 +390,14 @@ export class PipelineService {
         'failed',
         0,
         'Pipeline encountered an error',
-        err.message || 'Unknown processing error'
+        err.message || 'Unknown processing error',
+        'error'
       );
     }
   }
 
   /**
-   * Re-render a single clip when user updates crop offset or caption colors/presets
+   * Re-render a single clip when user updates crop offset, trim start/end, layout, or caption styles
    */
   static async reRenderClip(
     clipId: string,
@@ -302,6 +413,11 @@ export class PipelineService {
 
     const opts: ReRenderOptions = typeof options === 'number' ? { cropOffsetX: options } : (options || {});
     const cropOffsetX = opts.cropOffsetX !== undefined ? opts.cropOffsetX : (clip.crop_offset_x ?? 0);
+    const startTime = opts.startTime !== undefined ? Math.max(0, opts.startTime) : clip.start_time;
+    const endTime = opts.endTime !== undefined ? Math.max(startTime + 5, opts.endTime) : clip.end_time;
+    const layout = opts.layout || clip.layout || 'blur_bg';
+    const hookOverlay = opts.hookOverlay !== undefined ? opts.hookOverlay : (clip.hook_overlay !== 0);
+
     const captionPreset = opts.captionPreset || (clip.caption_preset as CaptionPreset) || 'hormozi_gold';
     const captionActiveColor = opts.captionActiveColor || clip.caption_active_color || '#FFE600';
     const captionBaseColor = opts.captionBaseColor || clip.caption_base_color || '#FFFFFF';
@@ -310,8 +426,11 @@ export class PipelineService {
     const projectDir = path.dirname(clip.video_path || path.join(CONFIG.STORAGE_DIR, clip.project_id, 'file.mp4'));
 
     // Update status to rendering
-    db.prepare("UPDATE clips SET status = 'rendering', crop_offset_x = ?, updated_at = ? WHERE id = ?")
-      .run(cropOffsetX, new Date().toISOString(), clipId);
+    db.prepare(`
+      UPDATE clips
+      SET status = 'rendering', start_time = ?, end_time = ?, crop_offset_x = ?, layout = ?, hook_overlay = ?, updated_at = ?
+      WHERE id = ?
+    `).run(startTime, endTime, cropOffsetX, layout, hookOverlay ? 1 : 0, new Date().toISOString(), clipId);
 
     try {
       // Re-read transcript if exists to build ASS subtitles
@@ -323,12 +442,14 @@ export class PipelineService {
           const transData = JSON.parse(fs.readFileSync(transcriptPath, 'utf-8'));
           if (Array.isArray(transData.words)) {
             assPath = path.join(projectDir, `clip_rerender_${clipId.substring(0, 6)}.ass`);
-            generateAssSubtitles(transData.words, clip.start_time, clip.end_time, assPath, {
+            generateAssSubtitles(transData.words, startTime, endTime, assPath, {
               preset: captionPreset,
               activeColorHex: captionActiveColor,
               baseColorHex: captionBaseColor,
               wordsPerChunk: wordsPerBurst,
-              animation: 'bounce'
+              animation: 'bounce',
+              hookText: clip.hook_line || clip.title,
+              includeHookOverlay: hookOverlay
             });
           }
         } catch (err: any) {
@@ -340,21 +461,23 @@ export class PipelineService {
       const newVideoPath = path.join(projectDir, `short_rerender_${clipId.substring(0, 8)}_${Date.now()}.mp4`);
       await FFmpegService.renderClip({
         sourceVideoPath: project.source_video_path,
-        startTime: clip.start_time,
-        endTime: clip.end_time,
+        startTime,
+        endTime,
         cropOffsetXPercent: cropOffsetX,
+        layout,
         assSubtitlePath: assPath,
         outputPath: newVideoPath
       });
 
-      // Re-generate thumbnail with offset
+      // Re-generate thumbnail
       const newThumbPath = path.join(projectDir, `thumb_rerender_${clipId.substring(0, 8)}_${Date.now()}.jpg`);
       try {
         await FFmpegService.generateThumbnail({
           sourceVideoPath: project.source_video_path,
-          captureTime: Math.min(clip.end_time, clip.start_time + 1.8),
+          captureTime: Math.min(endTime, startTime + 1.8),
           hookText: clip.hook_line || clip.title,
           cropOffsetXPercent: cropOffsetX,
+          layout,
           outputPath: newThumbPath
         });
       } catch {}
@@ -370,14 +493,18 @@ export class PipelineService {
       const now = new Date().toISOString();
       db.prepare(`
         UPDATE clips
-        SET video_path = ?, thumbnail_path = ?, status = 'draft', crop_offset_x = ?,
-            caption_preset = ?, caption_active_color = ?, caption_base_color = ?, words_per_burst = ?,
-            updated_at = ?
+        SET video_path = ?, thumbnail_path = ?, status = 'draft', start_time = ?, end_time = ?,
+            crop_offset_x = ?, layout = ?, hook_overlay = ?, caption_preset = ?, caption_active_color = ?,
+            caption_base_color = ?, words_per_burst = ?, updated_at = ?
         WHERE id = ?
       `).run(
         newVideoPath,
         fs.existsSync(newThumbPath) ? newThumbPath : clip.thumbnail_path,
+        startTime,
+        endTime,
         cropOffsetX,
+        layout,
+        hookOverlay ? 1 : 0,
         captionPreset,
         captionActiveColor,
         captionBaseColor,
@@ -388,8 +515,8 @@ export class PipelineService {
 
       return db.prepare('SELECT * FROM clips WHERE id = ?').get(clipId) as ClipRecord;
     } catch (err: any) {
-      db.prepare("UPDATE clips SET status = 'draft', updated_at = ? WHERE id = ?")
-        .run(new Date().toISOString(), clipId);
+      db.prepare("UPDATE clips SET status = 'draft', error_message = ?, updated_at = ? WHERE id = ?")
+        .run(err.message, new Date().toISOString(), clipId);
       throw err;
     }
   }
