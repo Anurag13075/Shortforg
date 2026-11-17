@@ -79,8 +79,12 @@ export async function pickViralMoments(
 Your task is to analyze timestamped video transcripts and extract exactly ${targetCount} of the most viral, standalone moments for 9:16 vertical Shorts.
 CHANNEL TONE / NICHE: ${nicheInstruction}
 
+MANDATORY QUANTITY REQUIREMENT:
+You MUST return between 6 and ${targetCount} moments in the "moments" JSON array. Returning only 1, 2, or 3 moments is strictly unacceptable.
+If the source video is concise, choose multiple compelling quotes, revelations, dramatic statements, or punchlines (each 18 to 48 seconds). Moments may highlight different parts across the entire transcript.
+
 STRICT ACCURACY & CONTENT-MATCHING RULES (NO GENERIC AI SLOP):
-1. Clip Length: Target 25 to 55 seconds (must be a self-contained story or thought).
+1. Clip Length: Target 20 to 50 seconds (must be a self-contained story, debate, or thought).
 2. The First 3 Seconds: Must open with an explosive hook, dramatic question, or intrigue gap.
 3. TITLE MUST MATCH THE EXACT CONTENT IN THE CLIP:
    - The title MUST name the specific subject, action, person, or question discussed in THAT exact clip.
@@ -129,7 +133,7 @@ RETURN VALID JSON WITH THIS EXACT STRUCTURE:
 }`;
 
   const userPrompt = `Video Duration: ${videoDuration.toFixed(1)} seconds.
-Analyze this timestamped transcript and select ${targetCount} top viral standalone moments (each 25-55s duration). Ensure every title and description matches what is actually said in that excerpt:
+Analyze this timestamped transcript and select ${targetCount} top viral standalone moments (each 20-50s duration). You must provide between 6 and ${targetCount} moments in the JSON array:
 
 ${timestampedChunks.join('\n\n')}`;
 
@@ -151,7 +155,8 @@ ${timestampedChunks.join('\n\n')}`;
           { role: 'user', content: userPrompt }
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.2
+        max_tokens: 4096,
+        temperature: 0.25
       });
       if (completion?.choices?.[0]?.message?.content) {
         break;
@@ -244,6 +249,40 @@ ${timestampedChunks.join('\n\n')}`;
       caption_options: captionOptions.slice(0, 2),
       hashtags: hashtags.slice(0, 5)
     });
+  }
+
+  // If the LLM returned fewer than 6 moments, generate supplementary viral segments across the transcript timeline
+  const desiredMin = Math.min(6, targetCount);
+  if (validatedMoments.length < desiredMin && words.length > 25) {
+    const stepDuration = Math.max(22, videoDuration / desiredMin);
+    for (let slot = 0; slot < desiredMin && validatedMoments.length < targetCount; slot++) {
+      const approxStart = Math.min(videoDuration - 18, slot * stepDuration);
+      const approxEnd = Math.min(videoDuration, approxStart + 35);
+      if (approxEnd - approxStart < 14) continue;
+
+      // Check if this time range already has a moment
+      const alreadyCovered = validatedMoments.some((vm) => Math.abs(vm.start - approxStart) < 10);
+      if (alreadyCovered) continue;
+
+      const snapped = snapToSentenceBoundaries(approxStart, approxEnd, words, videoDuration, 18, 50);
+      const segmentWords = words.filter((w) => w.start >= snapped.start && w.end <= snapped.end);
+      const spokenSample = segmentWords.slice(0, 8).map((w) => w.word).join(' ').replace(/["'\\]/g, '').trim();
+      const generatedTitle = spokenSample ? `${spokenSample.slice(0, 50)}...` : `Viral Moment Part ${validatedMoments.length + 1}`;
+      const hook = segmentWords.slice(0, 6).map((w) => w.word).join(' ').replace(/["'\\]/g, '').trim().toUpperCase();
+
+      validatedMoments.push({
+        start: snapped.start,
+        end: snapped.end,
+        virality_score: Math.max(75, 86 - slot * 2),
+        reason: 'Key narrative beat with natural speech boundary.',
+        hook_line: hook || generatedTitle.slice(0, 35),
+        title: generatedTitle,
+        title_options: [generatedTitle, `The Secret Behind ${generatedTitle.slice(0, 30)}`, `Wait Until You Hear This`],
+        caption: `Highlight from the video: "${spokenSample}" What do you think about this?`,
+        caption_options: [`Highlight: "${spokenSample}" What are your thoughts?`, `Must-see moment: "${spokenSample}"`],
+        hashtags: ['#shorts', '#viral', '#trending']
+      });
+    }
   }
 
   // Sort by virality score descending

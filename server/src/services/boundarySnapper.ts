@@ -44,10 +44,10 @@ export function snapToSentenceBoundaries(
     }
   }
 
-  // 2. Search backward (up to 4 seconds) or forward (up to 2 seconds) for a clean sentence starter
-  // A clean start is a word that follows terminal punctuation (. ? !) or a silence pause > 0.4s
+  // 2. Search backward (up to 4.5 seconds) or slightly forward for a clean sentence starter
+  // A clean start is a word that follows terminal punctuation (. ? !) or a silence pause > 0.35s
   let bestStartIdx = startIdx;
-  const startSearchMin = Math.max(0, rawStart - 4.0);
+  const startSearchMin = Math.max(0, rawStart - 4.5);
   const startSearchMax = rawStart + 2.5;
 
   let foundSentenceStart = false;
@@ -64,7 +64,7 @@ export function snapToSentenceBoundaries(
     const prevEndsWithPunct = /[.?!]$/.test(prevWord.word.trim());
     const pauseBefore = currWord.start - prevWord.end;
 
-    if (prevEndsWithPunct || pauseBefore >= 0.4) {
+    if (prevEndsWithPunct || pauseBefore >= 0.35) {
       bestStartIdx = i;
       foundSentenceStart = true;
       break;
@@ -77,7 +77,7 @@ export function snapToSentenceBoundaries(
       if (i > 0) {
         const prevWord = words[i - 1];
         const currWord = words[i];
-        if (/[.?!]$/.test(prevWord.word.trim()) || (currWord.start - prevWord.end) >= 0.4) {
+        if (/[.?!]$/.test(prevWord.word.trim()) || (currWord.start - prevWord.end) >= 0.35) {
           bestStartIdx = i;
           foundSentenceStart = true;
           break;
@@ -86,7 +86,8 @@ export function snapToSentenceBoundaries(
     }
   }
 
-  const snappedStart = Math.max(0, words[bestStartIdx].start);
+  // Pre-roll by 0.15s so the opening consonant is never clipped
+  const snappedStart = Math.max(0, words[bestStartIdx].start - 0.15);
 
   // 3. Find the word closest to rawEnd
   let endIdx = words.length - 1;
@@ -99,51 +100,60 @@ export function snapToSentenceBoundaries(
     }
   }
 
-  // 4. Search around endIdx for clean sentence completion (. ? ! or pause > 0.4s)
-  // Search within [-3.5s, +5.0s] while respecting minDuration and maxDuration
+  // 4. Guarantee Thought Completion: Search forward/around endIdx for TERMINAL punctuation (. ? !) or pause >= 0.6s
+  // NEVER cut off mid-thought or at a comma!
   let bestEndIdx = endIdx;
-  let foundSentenceEnd = false;
+  let terminalCandidateIdx: number | null = null;
+  let pauseCandidateIdx: number | null = null;
 
-  const minTargetTime = snappedStart + minDuration;
-  const maxTargetTime = Math.min(videoDuration, snappedStart + maxDuration);
-
-  // Search for the nearest terminal punctuation around endIdx
-  let candidates: { idx: number; score: number }[] = [];
-
-  for (let i = bestStartIdx + 3; i < words.length; i++) {
+  // First: look forward from endIdx up to maxDuration (or +8s) for the completion of the sentence
+  for (let i = endIdx; i < words.length; i++) {
     const w = words[i];
-    const candidateEnd = w.end;
-    const dur = candidateEnd - snappedStart;
+    const dur = w.end - snappedStart;
+    if (dur > maxDuration) break;
 
-    if (dur < minDuration || dur > maxDuration) continue;
-
-    const endsWithTerminal = /[.?!]$/.test(w.word.trim());
-    const endsWithComma = /[,;:]$/.test(w.word.trim());
+    const isTerminal = /[.?!]$/.test(w.word.trim());
     const nextWord = i < words.length - 1 ? words[i + 1] : null;
     const pauseAfter = nextWord ? (nextWord.start - w.end) : 1.0;
 
-    let score = 0;
-    if (endsWithTerminal) score += 10;
-    if (pauseAfter >= 0.5) score += 6;
-    if (endsWithComma && pauseAfter >= 0.3) score += 4;
-
-    // Prefer candidates closer to rawEnd
-    const diffFromRaw = Math.abs(candidateEnd - rawEnd);
-    score -= diffFromRaw * 1.5;
-
-    if (score > 0) {
-      candidates.push({ idx: i, score });
+    if (isTerminal) {
+      terminalCandidateIdx = i;
+      break; // Found the true completion of the sentence!
+    } else if (pauseAfter >= 0.65 && pauseCandidateIdx === null) {
+      pauseCandidateIdx = i;
     }
   }
 
-  if (candidates.length > 0) {
-    candidates.sort((a, b) => b.score - a.score);
-    bestEndIdx = candidates[0].idx;
-    foundSentenceEnd = true;
+  // If not found forward, search backward from endIdx for a terminal punctuation mark
+  if (terminalCandidateIdx === null) {
+    for (let i = endIdx; i >= bestStartIdx + 4; i--) {
+      const w = words[i];
+      const dur = w.end - snappedStart;
+      if (dur < minDuration) break;
+
+      const isTerminal = /[.?!]$/.test(w.word.trim());
+      const nextWord = i < words.length - 1 ? words[i + 1] : null;
+      const pauseAfter = nextWord ? (nextWord.start - w.end) : 1.0;
+
+      if (isTerminal) {
+        terminalCandidateIdx = i;
+        break;
+      } else if (pauseAfter >= 0.65 && pauseCandidateIdx === null) {
+        pauseCandidateIdx = i;
+      }
+    }
   }
 
-  // Add 0.25s audio tail padding so the last syllable resonates naturally
-  let snappedEnd = words[bestEndIdx].end + 0.25;
+  if (terminalCandidateIdx !== null) {
+    bestEndIdx = terminalCandidateIdx;
+  } else if (pauseCandidateIdx !== null) {
+    bestEndIdx = pauseCandidateIdx;
+  } else {
+    bestEndIdx = endIdx;
+  }
+
+  // Add 0.55s audio tail padding so the last word and sentence naturally reverberates (eliminates abrupt cuts)
+  let snappedEnd = words[bestEndIdx].end + 0.55;
   snappedEnd = Math.min(videoDuration, snappedEnd);
 
   // Enforce bounds

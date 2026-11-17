@@ -161,7 +161,7 @@ export class FFmpegService {
     if (layout === 'blur_bg') {
       // Hero Canvas Layout: Original video centered sharply with blurred/darkened background
       // 100% original video resolution is maintained with no cropped faces or zoom blur
-      let filterComplex = `[0:v]split=2[fg][bg];[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5,eq=brightness=-0.18[bg_dark];[fg]scale=1080:1920:force_original_aspect_ratio=decrease[fg_scaled];[bg_dark][fg_scaled]overlay=(W-w)/2:(H-h)/2[canvas]`;
+      let filterComplex = `[0:v]split=2[fg][bg];[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5,eq=brightness=-0.18,setpts=PTS-STARTPTS[bg_dark];[fg]scale=1080:1920:force_original_aspect_ratio=decrease,setpts=PTS-STARTPTS[fg_scaled];[bg_dark][fg_scaled]overlay=(W-w)/2:(H-h)/2:shortest=1[canvas]`;
       if (hasSubtitles) {
         filterComplex += `;[canvas]subtitles=${escapedAssPath}[v_out]`;
       } else {
@@ -173,10 +173,11 @@ export class FFmpegService {
         '-ss', startTime.toFixed(3),
         '-i', sourceVideoPath,
         '-t', duration.toFixed(3),
+        '-avoid_negative_ts', 'make_zero',
         '-filter_complex', filterComplex,
         '-map', '[v_out]',
         '-map', '0:a?',
-        '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+        '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11,asetpts=PTS-STARTPTS',
         '-c:v', 'libx264',
         '-preset', 'fast',
         '-crf', '18',
@@ -195,7 +196,7 @@ export class FFmpegService {
       const cropExpr = `crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':'min(max(0,(iw-ow)/2+${offsetFactor}*(iw-ow)/2),iw-ow)':'(ih-oh)/2'`;
       const scaleExpr = `scale=1080:1920:flags=lanczos,unsharp=3:3:0.8:3:3:0.4`;
 
-      let vfFilters = `${cropExpr},${scaleExpr}`;
+      let vfFilters = `setpts=PTS-STARTPTS,${cropExpr},${scaleExpr}`;
       if (hasSubtitles) {
         vfFilters += `,subtitles=${escapedAssPath}`;
       }
@@ -205,8 +206,9 @@ export class FFmpegService {
         '-ss', startTime.toFixed(3),
         '-i', sourceVideoPath,
         '-t', duration.toFixed(3),
+        '-avoid_negative_ts', 'make_zero',
         '-vf', vfFilters,
-        '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+        '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11,asetpts=PTS-STARTPTS',
         '-c:v', 'libx264',
         '-preset', 'fast',
         '-crf', '18',
