@@ -136,7 +136,14 @@ export function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-row font-sans selection:bg-blue-500/25 selection:text-white relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#07080e] text-zinc-100 flex flex-row font-sans selection:bg-indigo-500/30 selection:text-white relative overflow-x-hidden">
+      {/* Ambient background studio lighting */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-gradient-to-b from-indigo-600/12 via-purple-600/6 to-transparent blur-[140px] rounded-full" />
+        <div className="absolute top-[35%] -left-[180px] w-[450px] h-[450px] bg-blue-600/6 blur-[130px] rounded-full" />
+        <div className="absolute top-[65%] -right-[180px] w-[450px] h-[450px] bg-amber-500/5 blur-[130px] rounded-full" />
+      </div>
+
       {/* Sidebar Navigation */}
       <Sidebar
         currentTab={currentTab}
@@ -147,7 +154,7 @@ export function App() {
       />
 
       {/* Main Studio Viewport */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen relative z-10">
         {/* Top Navbar */}
         <Navbar
           currentTab={currentTab}

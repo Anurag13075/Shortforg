@@ -418,15 +418,18 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 
       {/* Clips Grid */}
       {filteredClips.length === 0 ? (
-        <div className="studio-card p-12 text-center border-dashed">
-          <p className="text-zinc-500 text-xs font-mono">
+        <div className="glass-deck rounded-3xl p-16 text-center border-dashed border border-white/10 max-w-2xl mx-auto space-y-3">
+          <div className="w-12 h-12 rounded-xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center mx-auto text-zinc-400">
+            <Layers className="w-6 h-6 text-indigo-400" />
+          </div>
+          <p className="text-zinc-400 text-xs font-mono">
             {isStillProcessing
               ? 'Rendering vertical 9:16 video cuts with FFmpeg... clips will populate automatically.'
               : `No clips found in '${filter}' filter.`}
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto justify-center">
           {filteredClips.map((clip) => (
             <ClipCard
               key={clip.id}

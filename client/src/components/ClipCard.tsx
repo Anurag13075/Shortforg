@@ -293,7 +293,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
         </div>
 
         {/* 9:16 Video Player Frame */}
-        <div className="relative bg-black w-full aspect-[9/16] max-h-[360px] flex items-center justify-center overflow-hidden border-b border-white/[0.06]">
+        <div className="relative bg-black w-full aspect-[9/16] min-h-[440px] max-h-[520px] flex items-center justify-center overflow-hidden border-b border-white/[0.06] group/player">
           {clip.status === 'failed' ? (
             <div className="flex flex-col items-center justify-center p-6 text-center space-y-2">
               <AlertCircle className="w-8 h-8 text-rose-400" />
@@ -304,16 +304,18 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
               <button
                 onClick={handleSaveAndRerender}
                 disabled={isRendering}
-                className="px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/30 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/30 rounded-lg text-xs font-medium transition-colors cursor-pointer"
               >
                 Retry Render
               </button>
             </div>
           ) : isRendering ? (
-            <div className="flex flex-col items-center gap-2 text-center p-6">
-              <Loader2 className="w-7 h-7 text-blue-400 animate-spin" />
-              <p className="text-xs font-medium text-white">Re-rendering with FFmpeg...</p>
-              <p className="text-[10px] text-zinc-500 font-mono">1080p layout & kinetic subtitles</p>
+            <div className="flex flex-col items-center gap-3 text-center p-6">
+              <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+              <div>
+                <p className="text-xs font-semibold text-white">Re-rendering with FFmpeg...</p>
+                <p className="text-[10px] text-zinc-400 font-mono mt-0.5">1080p layout & kinetic subtitles</p>
+              </div>
             </div>
           ) : activeTab === 'video' ? (
             clip.video_path ? (
@@ -325,7 +327,16 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
                 className="w-full h-full object-contain"
               />
             ) : (
-              <div className="text-xs text-zinc-600 font-mono">Video pending render</div>
+              <div className="flex flex-col items-center gap-2 text-center p-6">
+                <Film className="w-8 h-8 text-zinc-600" />
+                <p className="text-xs text-zinc-400 font-mono">Video pending render</p>
+                <button
+                  onClick={handleSaveAndRerender}
+                  className="px-3 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 rounded-lg text-xs font-mono"
+                >
+                  Render Now
+                </button>
+              </div>
             )
           ) : clip.thumbnail_path ? (
             <img
@@ -335,6 +346,18 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
             />
           ) : (
             <div className="text-xs text-zinc-600 font-mono">No thumbnail</div>
+          )}
+
+          {/* Quick Rerender Floating Button on hover */}
+          {clip.video_path && !isRendering && (
+            <button
+              onClick={handleSaveAndRerender}
+              className="absolute bottom-12 right-2.5 opacity-0 group-hover/player:opacity-100 transition-opacity px-2 py-1 rounded-md bg-black/80 hover:bg-black text-[10px] font-mono text-zinc-300 hover:text-white border border-white/20 shadow flex items-center gap-1 cursor-pointer"
+              title="Force re-render with latest 1080p engine"
+            >
+              <RotateCw className="w-3 h-3 text-indigo-400" />
+              <span>Fix/Rerender</span>
+            </button>
           )}
 
           {/* Hook Pill Top Overlay */}
