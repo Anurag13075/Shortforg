@@ -67,8 +67,6 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
   }, [projectId]);
 
   useEffect(() => {
-    if (!project || ['completed', 'failed'].includes(project.status)) return;
-
     const unsubscribe = api.subscribeProjectProgress(projectId, (update) => {
       setProject((prev) =>
         prev
@@ -94,7 +92,17 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
       }
     });
 
-    return () => unsubscribe();
+    // Dynamic clip population polling while rendering
+    const pollTimer = setInterval(() => {
+      if (project?.status === 'processing') {
+        fetchProjectDetails();
+      }
+    }, 4500);
+
+    return () => {
+      unsubscribe();
+      clearInterval(pollTimer);
+    };
   }, [projectId, project?.status]);
 
   const handleRetry = async () => {

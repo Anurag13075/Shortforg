@@ -310,29 +310,42 @@ clipsRouter.get('/:id/video', (req: Request, res: Response) => {
     const videoPath = clip.video_path;
     const stat = fs.statSync(videoPath);
     const fileSize = stat.size;
-    const range = typeof req.headers.range === 'string' ? req.headers.range : undefined;
+    const range = req.headers.range;
 
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+
+      if (isNaN(start) || start >= fileSize || end >= fileSize || start > end) {
+        res.status(416).set('Content-Range', `bytes */${fileSize}`).end();
+        return;
+      }
+
       const chunksize = end - start + 1;
       const file = fs.createReadStream(videoPath, { start, end });
-      const head = {
+      res.writeHead(206, {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunksize,
-        'Content-Type': 'video/mp4'
-      };
-      res.writeHead(206, head);
+        'Content-Type': 'video/mp4',
+        'Cache-Control': 'no-cache'
+      });
+
       file.pipe(res);
+      file.on('error', () => { if (!res.headersSent) res.status(500).end(); });
+      res.on('close', () => file.destroy());
     } else {
-      const head = {
+      res.writeHead(200, {
         'Content-Length': fileSize,
-        'Content-Type': 'video/mp4'
-      };
-      res.writeHead(200, head);
-      fs.createReadStream(videoPath).pipe(res);
+        'Content-Type': 'video/mp4',
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'no-cache'
+      });
+      const file = fs.createReadStream(videoPath);
+      file.pipe(res);
+      file.on('error', () => { if (!res.headersSent) res.status(500).end(); });
+      res.on('close', () => file.destroy());
     }
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });

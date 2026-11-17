@@ -161,7 +161,7 @@ export class FFmpegService {
     if (layout === 'blur_bg') {
       // Hero Canvas Layout: Original video centered sharply with blurred/darkened background
       // 100% original video resolution is maintained with no cropped faces or zoom blur
-      let filterComplex = `[0:v]split=2[fg][bg];[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5,eq=brightness=-0.18,setpts=PTS-STARTPTS[bg_dark];[fg]scale=1080:1920:force_original_aspect_ratio=decrease,setpts=PTS-STARTPTS[fg_scaled];[bg_dark][fg_scaled]overlay=(W-w)/2:(H-h)/2:shortest=1[canvas]`;
+      let filterComplex = `[0:v]split=2[fg][bg];[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:4,eq=brightness=-0.20,setpts=PTS-STARTPTS[bg_dark];[fg]scale=1080:-2,setpts=PTS-STARTPTS[fg_scaled];[bg_dark][fg_scaled]overlay=0:(H-h)/2:shortest=1[canvas]`;
       if (hasSubtitles) {
         filterComplex += `;[canvas]subtitles=${escapedAssPath}[v_out]`;
       } else {
