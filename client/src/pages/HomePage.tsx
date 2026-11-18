@@ -675,6 +675,20 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
                       {proj.title || proj.youtube_url}
                     </h3>
 
+                    {/* Quick Re-generate Button if 0 clips */}
+                    {isDone && (!proj.clip_count || proj.clip_count === 0) && (
+                      <div className="mt-2 space-y-1.5">
+                        <button
+                          onClick={(e) => handleRetry(proj.id, e)}
+                          className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-mono font-medium transition-all cursor-pointer"
+                          title="Generate 8 viral 9:16 clips for this video"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Generate 8 Clips Now</span>
+                        </button>
+                      </div>
+                    )}
+
                     {/* Error Banner if Failed */}
                     {isFailed && proj.error_message && (
                       <div className="mt-2 space-y-2">

@@ -156,6 +156,54 @@ scheduleRouter.post('/:id/retry', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/schedule/sync - Restore schedule queue from client vault across container redeployments
+ */
+scheduleRouter.post('/sync', (req: Request, res: Response) => {
+  const { queue } = req.body;
+  if (!Array.isArray(queue) || queue.length === 0) {
+    return res.json({ success: true, synced: 0 });
+  }
+
+  const now = new Date().toISOString();
+  let synced = 0;
+
+  for (const item of queue) {
+    if (!item.id || !item.clip_id || !item.channel_id) continue;
+    try {
+      const existing = db.prepare('SELECT id FROM schedule_queue WHERE id = ?').get(item.id);
+      if (!existing) {
+        // Ensure dummy clip exists if missing so foreign key constraint passes
+        const clipExists = db.prepare('SELECT id FROM clips WHERE id = ?').get(item.clip_id);
+        if (!clipExists) {
+          db.prepare(`
+            INSERT INTO clips (id, project_id, title, status, start_time, end_time, created_at, updated_at)
+            VALUES (?, 'restored', ?, 'approved', 0, 30, ?, ?)
+          `).run(item.clip_id, item.clip_title || 'Restored Clip', now, now);
+        }
+
+        db.prepare(`
+          INSERT INTO schedule_queue (id, clip_id, channel_id, scheduled_time, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          item.id,
+          item.clip_id,
+          item.channel_id,
+          item.scheduled_time || now,
+          item.status || 'scheduled',
+          item.created_at || now,
+          item.updated_at || now
+        );
+        synced++;
+      }
+    } catch (err: any) {
+      console.warn('Queue sync error:', err.message);
+    }
+  }
+
+  res.json({ success: true, synced });
+});
+
+/**
  * DELETE /api/schedule/:id - Cancel/remove from queue
  */
 scheduleRouter.delete('/:id', (req: Request, res: Response) => {

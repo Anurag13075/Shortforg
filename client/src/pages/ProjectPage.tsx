@@ -418,15 +418,33 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 
       {/* Clips Grid */}
       {filteredClips.length === 0 ? (
-        <div className="glass-deck rounded-3xl p-16 text-center border-dashed border border-white/10 max-w-2xl mx-auto space-y-3">
-          <div className="w-12 h-12 rounded-xl bg-white/[0.04] border border-white/[0.08] flex items-center justify-center mx-auto text-zinc-400">
-            <Layers className="w-6 h-6 text-indigo-400" />
+        <div className="glass-deck rounded-3xl p-12 sm:p-16 text-center border-dashed border border-white/10 max-w-2xl mx-auto space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto text-indigo-400">
+            <Layers className="w-7 h-7" />
           </div>
-          <p className="text-zinc-400 text-xs font-mono">
-            {isStillProcessing
-              ? 'Rendering vertical 9:16 video cuts with FFmpeg... clips will populate automatically.'
-              : `No clips found in '${filter}' filter.`}
-          </p>
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-white">
+              {isStillProcessing ? 'Rendering Viral 9:16 Shorts...' : 'No clips currently available in this project'}
+            </h3>
+            <p className="text-zinc-400 text-xs font-mono max-w-md mx-auto">
+              {isStillProcessing
+                ? 'Groq Whisper timestamps and FFmpeg 1080p rendering in progress... clips will populate automatically.'
+                : 'Run the autonomous AI extraction to generate 8 high-retention clips with Hormozi captions ready for scheduling.'}
+            </p>
+          </div>
+
+          {!isStillProcessing && (
+            <div className="pt-2">
+              <button
+                onClick={handleRetry}
+                disabled={isRetrying}
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-[0_0_20px_rgba(99,102,241,0.4)] transition-all cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRetrying ? 'animate-spin' : ''}`} />
+                <span>{isRetrying ? 'Starting Pipeline...' : 'Generate 8 Viral Clips Now'}</span>
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto justify-center">

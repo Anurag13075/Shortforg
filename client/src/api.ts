@@ -261,26 +261,79 @@ export const api = {
     }
   },
 
-  // Scheduling
-  getSchedule: () => request<QueueItem[]>('/api/schedule'),
-  scheduleClip: (clip_id: string, channel_id: string, scheduled_time: string) =>
-    request<QueueItem>('/api/schedule', {
+  // Scheduling (with automated client vault persistence across redeployments)
+  getSchedule: async () => {
+    try {
+      const queue = await request<QueueItem[]>('/api/schedule');
+      if (Array.isArray(queue) && queue.length > 0) {
+        try {
+          localStorage.setItem('sf_queue_vault', JSON.stringify(queue));
+        } catch {}
+        return queue;
+      }
+      // If server returned 0 queue items (e.g. after container redeploy), auto-sync from client vault
+      const cached = localStorage.getItem('sf_queue_vault');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          await request<{ success: boolean; synced: number }>('/api/schedule/sync', {
+            method: 'POST',
+            body: JSON.stringify({ queue: parsed })
+          });
+          return await request<QueueItem[]>('/api/schedule');
+        }
+      }
+      return queue;
+    } catch (e) {
+      const cached = localStorage.getItem('sf_queue_vault');
+      if (cached) {
+        try { return JSON.parse(cached); } catch {}
+      }
+      throw e;
+    }
+  },
+  scheduleClip: async (clip_id: string, channel_id: string, scheduled_time: string) => {
+    const res = await request<QueueItem>('/api/schedule', {
       method: 'POST',
       body: JSON.stringify({ clip_id, channel_id, scheduled_time })
-    }),
-  autoSchedule: (channel_id: string, clips_per_day: number = 2, project_id?: string) =>
-    request<{ success: boolean; message: string; scheduledCount: number }>('/api/schedule/auto', {
+    });
+    try {
+      const cached = localStorage.getItem('sf_queue_vault');
+      const existing = cached ? JSON.parse(cached) : [];
+      localStorage.setItem('sf_queue_vault', JSON.stringify([...existing, res]));
+    } catch {}
+    return res;
+  },
+  autoSchedule: async (channel_id: string, clips_per_day: number = 2, project_id?: string) => {
+    const res = await request<{ success: boolean; message: string; scheduledCount: number }>('/api/schedule/auto', {
       method: 'POST',
       body: JSON.stringify({ channel_id, clips_per_day, project_id })
-    }),
+    });
+    // Immediately refresh and store full queue
+    try {
+      const fullQueue = await request<QueueItem[]>('/api/schedule');
+      localStorage.setItem('sf_queue_vault', JSON.stringify(fullQueue));
+    } catch {}
+    return res;
+  },
   retryQueueItem: (id: string) =>
     request<{ success: boolean; message: string }>(`/api/schedule/${id}/retry`, {
       method: 'POST'
     }),
-  deleteQueueItem: (id: string) =>
-    request<{ success: boolean; message: string }>(`/api/schedule/${id}`, {
+  deleteQueueItem: async (id: string) => {
+    const res = await request<{ success: boolean; message: string }>(`/api/schedule/${id}`, {
       method: 'DELETE'
-    }),
+    });
+    try {
+      const cached = localStorage.getItem('sf_queue_vault');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const filtered = parsed.filter((q: any) => q.id !== id);
+        localStorage.setItem('sf_queue_vault', JSON.stringify(filtered));
+      }
+    } catch {}
+    return res;
+  },
 
   // SSE Live Progress Listener
   subscribeProjectProgress: (projectId: string, onUpdate: (update: any) => void): (() => void) => {
