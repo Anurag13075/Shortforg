@@ -81,7 +81,7 @@ export const api = {
       }
       return data;
     } catch (err: any) {
-      // Fallback to cache if server DB restarted
+      
       const cached = localStorage.getItem(`sf_project_${id}`);
       if (cached) {
         try {
@@ -120,7 +120,7 @@ export const api = {
     method: 'POST'
   }),
 
-  // Cookies Vault API
+
   getCookiesStatus: async () => {
     try {
       const res = await request<{ hasCookies: boolean; cookieCount: number; cookiePath: string }>('/api/cookies');

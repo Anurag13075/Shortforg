@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { YouTubeService } from '../services/youtube.js';
 import { CONFIG } from '../config.js';
 
-export const authRouter = Router();
+export const authRouter =  Router();
 
 /**
  * GET /auth/google - Initiate Google OAuth2 flow for YouTube Data API

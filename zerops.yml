@@ -12,6 +12,7 @@ zerops:
         - cd client && npm install && npm run build
       deployFiles:
         - server/dist
+        - server/fonts
         - server/package.json
         - server/node_modules
         - client/dist
@@ -22,6 +23,8 @@ zerops:
       prepareCommands:
         # Install FFmpeg, fonts, gcompat, python3, pip, and pure-Python yt-dlp natively on Alpine
         - apk add --no-cache ffmpeg ttf-dejavu fontconfig python3 py3-pip gcompat curl ca-certificates || true
+        - mkdir -p /usr/share/fonts/truetype/custom && cp server/fonts/*.ttf /usr/share/fonts/truetype/custom/ 2>/dev/null || true
+        - fc-cache -f 2>/dev/null || true
         - python3 -m pip install --no-cache-dir --break-system-packages -U yt-dlp || pip3 install --no-cache-dir -U yt-dlp || apk add --no-cache yt-dlp || true
       start: node server/dist/index.js
       ports:

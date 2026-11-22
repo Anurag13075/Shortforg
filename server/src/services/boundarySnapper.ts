@@ -18,8 +18,8 @@ export function snapToSentenceBoundaries(
   rawEnd: number,
   words: WordTimestamp[],
   videoDuration: number,
-  minDuration: number = 22,
-  maxDuration: number = 58
+  minDuration: number = 18,
+  maxDuration: number = 42
 ): SnappedBoundary {
   if (!words || words.length === 0) {
     const start = Math.max(0, Math.round(rawStart * 10) / 10);

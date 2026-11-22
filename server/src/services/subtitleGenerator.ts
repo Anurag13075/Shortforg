@@ -4,12 +4,12 @@ import fs from 'fs';
 export type CaptionPreset = 'hormozi_gold' | 'neon_green' | 'cyber_cyan' | 'sunset_punch' | 'electric_purple' | 'custom';
 
 export interface SubtitleOptions {
-  wordsPerChunk?: number;     // 1 to 3 words per burst (default: 2-3)
-  fontSize?: number;          // default: 80
-  preset?: CaptionPreset;     // preset name
-  activeColorHex?: string;    // e.g. '#FFE600' or '#00FF66'
-  baseColorHex?: string;      // e.g. '#FFFFFF'
-  outlineColorHex?: string;   // e.g. '#000000'
+  wordsPerChunk?: number;     
+  fontSize?: number;          
+  preset?: CaptionPreset;     
+  activeColorHex?: string;    
+  baseColorHex?: string;     
+  outlineColorHex?: string;   
   animation?: 'bounce' | 'glow' | 'simple';
   hookText?: string;          // Spoken hook line to burn in top banner
   includeHookOverlay?: boolean; // Default: true (shows for first 2.5s)
@@ -104,7 +104,7 @@ export function generateAssSubtitles(
   const outlineColor = hexToAssColor(options?.outlineColorHex || presetConfig.outline);
 
   const wordsPerChunk = Math.max(1, Math.min(4, options?.wordsPerChunk || 2));
-  const fontSize = options?.fontSize || 82;
+  const fontSize = options?.fontSize || 88;
   const animation = options?.animation || 'bounce';
 
   // Filter words that belong to this clip segment and normalize times relative to clip start (0)
@@ -136,7 +136,7 @@ export function generateAssSubtitles(
     }
   }
 
-  // Generate ASS script header with high-impact font, heavy outline, and optional Hook Banner
+  // Generate ASS script header with high-impact Anton typography, sweet-spot eyeline positioning (MarginV: 860 avoids mobile UI), and Hook Banner
   const header = `[Script Info]
 Title: ShortsForge Kinetic Captions
 ScriptType: v4.00+
@@ -148,8 +148,8 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Impact,${fontSize},${baseColor},&H00000000,${outlineColor},&H80000000,-1,0,0,0,100,100,1,0,1,10,4,2,60,60,560,1
-Style: HookBanner,Impact,74,&H0000FFFF,&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,8,4,8,40,40,220,1
+Style: Default,Anton,${fontSize},${baseColor},&H00000000,${outlineColor},&H80000000,-1,0,0,0,100,100,1,0,1,10,4,2,60,60,860,1
+Style: HookBanner,Anton,74,&H0000FFFF,&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,8,4,8,40,40,180,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -157,12 +157,27 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
   const dialogueLines: string[] = [];
 
-  // 1. Burn-in Hook Headline Banner for the first 2.5 seconds (stops scrollers instantly)
+  // 1. Burn-in Hook Headline Banner for the first 2.2 seconds (instant pattern interrupt)
   if (options?.includeHookOverlay !== false && options?.hookText && options.hookText.trim()) {
-    const cleanHook = options.hookText.replace(/[\r\n\t]+/g, ' ').replace(/[{}]/g, '').trim().toUpperCase();
-    if (cleanHook.length > 0) {
+    const rawHook = options.hookText.replace(/[\r\n\t]+/g, ' ').replace(/[{}]/g, '').trim().toUpperCase();
+    if (rawHook.length > 0) {
+      // Split into lines if longer than 20 chars so it stays centered
+      const hookWords = rawHook.split(/\s+/);
+      const hookLines: string[] = [];
+      let curLine = '';
+      for (const hw of hookWords) {
+        if ((curLine + ' ' + hw).trim().length > 20) {
+          if (curLine) hookLines.push(curLine.trim());
+          curLine = hw;
+        } else {
+          curLine = (curLine + ' ' + hw).trim();
+        }
+      }
+      if (curLine) hookLines.push(curLine.trim());
+      const cleanHook = hookLines.join('\\N');
+
       dialogueLines.push(
-        `Dialogue: 1,0:00:00.00,0:00:02.50,HookBanner,,0,0,0,,{\\b1\\c&H0000FFFF&\\3c&H00000000&\\bord8\\shad3}${cleanHook}`
+        `Dialogue: 1,0:00:00.00,0:00:02.20,HookBanner,,0,0,0,,{\\b1\\c&H0000FFFF&\\3c&H00000000&\\bord9\\shad4}${cleanHook}`
       );
     }
   }

@@ -84,8 +84,8 @@ You MUST return between 6 and ${targetCount} moments in the "moments" JSON array
 If the source video is concise, choose multiple compelling quotes, revelations, dramatic statements, or punchlines (each 18 to 48 seconds). Moments may highlight different parts across the entire transcript.
 
 STRICT ACCURACY & CONTENT-MATCHING RULES (NO GENERIC AI SLOP):
-1. Clip Length: Target 20 to 50 seconds (must be a self-contained story, debate, or thought).
-2. The First 3 Seconds: Must open with an explosive hook, dramatic question, or intrigue gap.
+1. Clip Length: Target 18 to 38 seconds (optimal for 100%+ YouTube Shorts completion rate and algorithmic loop virality). Never exceed 45 seconds unless a continuous story strictly requires it.
+2. The First 1.5 Seconds (CRITICAL PATTERN INTERRUPT): Must open with an immediate hook, high-energy statement, shocking fact, bold claim, or intrigue gap with ZERO dead air or throat-clearing.
 3. TITLE MUST MATCH THE EXACT CONTENT IN THE CLIP:
    - The title MUST name the specific subject, action, person, or question discussed in THAT exact clip.
    - Example good titles matching transcript: "I Got Fired For Automating My Job", "Why Don Threatened My Mom", "Honeydeck School Shutting Down?", "Paying $20 To Pass AI Interviews".

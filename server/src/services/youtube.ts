@@ -147,10 +147,10 @@ export class YouTubeService {
     });
 
     try {
-      // Force token check/refresh
+      
       await oauth2Client.getAccessToken();
     } catch (err: any) {
-      // If refresh fails, mark channel as reconnect_needed
+   
       db.prepare("UPDATE channels SET status = 'reconnect_needed', updated_at = ? WHERE id = ?")
         .run(new Date().toISOString(), channelId);
       throw new Error(`Channel ${channel.title} authentication failed: ${err.message}. Reconnect needed.`);
@@ -198,7 +198,7 @@ export class YouTubeService {
             title: shortTitle.substring(0, 100),
             description,
             tags,
-            categoryId: '22' // People & Blogs
+            categoryId: '22'
           },
           status: {
             privacyStatus: 'public', // public Short

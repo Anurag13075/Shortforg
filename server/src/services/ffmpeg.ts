@@ -1,8 +1,37 @@
 import { execSync, spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export class FFmpegService {
+  /**
+   * Discovers the bundled Anton/custom fonts directory across dev & production
+   */
+  public static getFontsDir(): string | null {
+    const candidateDirs = [
+      path.resolve(__dirname, '../../../server/fonts'),
+      path.resolve(__dirname, '../../fonts'),
+      path.resolve(__dirname, '../fonts'),
+      path.resolve(process.cwd(), 'server/fonts'),
+      path.resolve(process.cwd(), 'fonts'),
+      '/var/www/server/fonts',
+      '/usr/share/fonts/truetype/custom'
+    ];
+    for (const dir of candidateDirs) {
+      if (fs.existsSync(dir)) {
+        try {
+          const files = fs.readdirSync(dir);
+          if (files.some((f) => f.endsWith('.ttf') || f.endsWith('.otf'))) {
+            return dir;
+          }
+        } catch {}
+      }
+    }
+    return null;
+  }
   /**
    * Verify if ffmpeg and ffprobe are installed and available on PATH
    */
@@ -156,14 +185,17 @@ export class FFmpegService {
     const hasSubtitles = includeSubtitles && assSubtitlePath && fs.existsSync(assSubtitlePath);
     const escapedAssPath = hasSubtitles ? this.escapeFilterPath(assSubtitlePath!) : '';
 
+    const fontsDir = this.getFontsDir();
+    const fontsDirParam = fontsDir ? `:fontsdir=${this.escapeFilterPath(fontsDir)}` : '';
+
     let args: string[] = [];
 
     if (layout === 'blur_bg') {
-      // Hero Canvas Layout: Original video centered sharply with blurred/darkened background
+      // Hero Canvas Layout: High contrast blurred backdrop + sharpened center foreground
       // 100% original video resolution is maintained with no cropped faces or zoom blur
-      let filterComplex = `[0:v]split=2[fg][bg];[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:4,eq=brightness=-0.20,setpts=PTS-STARTPTS[bg_dark];[fg]scale=1080:-2,setpts=PTS-STARTPTS[fg_scaled];[bg_dark][fg_scaled]overlay=0:(H-h)/2:shortest=1[canvas]`;
+      let filterComplex = `[0:v]split=2[fg][bg];[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5,eq=brightness=-0.26:contrast=1.08,setpts=PTS-STARTPTS[bg_dark];[fg]scale=1080:-2,unsharp=3:3:0.7:3:3:0.3,setpts=PTS-STARTPTS[fg_scaled];[bg_dark][fg_scaled]overlay=0:(H-h)/2:shortest=1[canvas]`;
       if (hasSubtitles) {
-        filterComplex += `;[canvas]subtitles=${escapedAssPath}[v_out]`;
+        filterComplex += `;[canvas]subtitles=${escapedAssPath}${fontsDirParam}[v_out]`;
       } else {
         filterComplex += `;[canvas]null[v_out]`;
       }
@@ -177,13 +209,13 @@ export class FFmpegService {
         '-filter_complex', filterComplex,
         '-map', '[v_out]',
         '-map', '0:a?',
-        '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11,asetpts=PTS-STARTPTS',
+        '-af', 'loudnorm=I=-14:TP=-1.0:LRA=7,asetpts=PTS-STARTPTS',
         '-c:v', 'libx264',
         '-preset', 'fast',
-        '-crf', '18',
-        '-b:v', '4500k',
-        '-maxrate', '6000k',
-        '-bufsize', '8000k',
+        '-crf', '17',
+        '-b:v', '5500k',
+        '-maxrate', '7500k',
+        '-bufsize', '10000k',
         '-pix_fmt', 'yuv420p',
         '-c:a', 'aac',
         '-b:a', '192k',
@@ -198,7 +230,7 @@ export class FFmpegService {
 
       let vfFilters = `setpts=PTS-STARTPTS,${cropExpr},${scaleExpr}`;
       if (hasSubtitles) {
-        vfFilters += `,subtitles=${escapedAssPath}`;
+        vfFilters += `,subtitles=${escapedAssPath}${fontsDirParam}`;
       }
 
       args = [
@@ -208,13 +240,13 @@ export class FFmpegService {
         '-t', duration.toFixed(3),
         '-avoid_negative_ts', 'make_zero',
         '-vf', vfFilters,
-        '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11,asetpts=PTS-STARTPTS',
+        '-af', 'loudnorm=I=-14:TP=-1.0:LRA=7,asetpts=PTS-STARTPTS',
         '-c:v', 'libx264',
         '-preset', 'fast',
-        '-crf', '18',
-        '-b:v', '4500k',
-        '-maxrate', '6000k',
-        '-bufsize', '8000k',
+        '-crf', '17',
+        '-b:v', '5500k',
+        '-maxrate', '7500k',
+        '-bufsize', '10000k',
         '-pix_fmt', 'yuv420p',
         '-c:a', 'aac',
         '-b:a', '192k',
@@ -257,7 +289,7 @@ export class FFmpegService {
   }
 
   /**
-   * Generate 9:16 thumbnail with hook text overlay
+   * Generate 9:16 high-CTR viral thumbnail with vibrant Anton typography and zero black bars
    */
   static async generateThumbnail(params: {
     sourceVideoPath: string;
@@ -270,6 +302,9 @@ export class FFmpegService {
     const { sourceVideoPath, captureTime, hookText, cropOffsetXPercent, outputPath } = params;
     const layout = params.layout || 'blur_bg';
 
+    const fontsDir = this.getFontsDir();
+    const fontsDirParam = fontsDir ? `:fontsdir=${this.escapeFilterPath(fontsDir)}` : '';
+
     const tempAssPath = outputPath + '.thumb.ass';
     const cleanHook = (hookText || 'WATCH THIS')
       .replace(/[\r\n]+/g, ' ')
@@ -280,7 +315,7 @@ export class FFmpegService {
     const lines: string[] = [];
     let currentLine = '';
     for (const w of words) {
-      if ((currentLine + ' ' + w).trim().length > 18) {
+      if ((currentLine + ' ' + w).trim().length > 16) {
         if (currentLine) lines.push(currentLine.trim());
         currentLine = w;
       } else {
@@ -298,27 +333,36 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Hook,DejaVu Sans,82,&H0000FFFF,&H00000000,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,8,4,5,60,60,400,1
+Style: Hook,Anton,92,&H0000FFFF,&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,0,0,1,10,5,8,50,50,240,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:00.00,0:00:10.00,Hook,,0,0,0,,{\\an5\\b1\\c&H00F0FF&\\3c&H000000&\\bord10\\shad4}${displayHook}
+Dialogue: 0,0:00:00.00,0:00:10.00,Hook,,0,0,0,,{\\an8\\b1\\c&H0000FFFF&\\3c&H000000&\\bord11\\shad5}${displayHook}
 `;
 
     fs.writeFileSync(tempAssPath, assContent, 'utf-8');
 
-    let vfFilters = '';
+    // For blur_bg: full 9:16 blurred background with sharp center fg (ZERO BLACK BARS!)
     if (layout === 'blur_bg') {
-      vfFilters = `scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black`;
-    } else {
-      const offsetFactor = Math.max(-1, Math.min(1, cropOffsetXPercent / 100));
-      vfFilters = `crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':'min(max(0,(iw-ow)/2+${offsetFactor}*(iw-ow)/2),iw-ow)':'(ih-oh)/2',scale=1080:1920`;
+      const filterComplexWithSub = `[0:v]split=2[fg][bg];[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5,eq=brightness=-0.26:contrast=1.1[bg_dark];[fg]scale=1080:-2,unsharp=3:3:0.8:3:3:0.4[fg_s];[bg_dark][fg_s]overlay=0:(H-h)/2[base_canvas];[base_canvas]subtitles=${this.escapeFilterPath(tempAssPath)}${fontsDirParam}[out_v]`;
+      const filterComplexClean = `[0:v]split=2[fg][bg];[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5,eq=brightness=-0.26:contrast=1.1[bg_dark];[fg]scale=1080:-2,unsharp=3:3:0.8:3:3:0.4[fg_s];[bg_dark][fg_s]overlay=0:(H-h)/2[out_v]`;
+
+      try {
+        await this.runThumbnailComplexFfmpeg(filterComplexWithSub, sourceVideoPath, captureTime, outputPath);
+      } catch {
+        await this.runThumbnailComplexFfmpeg(filterComplexClean, sourceVideoPath, captureTime, outputPath);
+      } finally {
+        try { fs.unlinkSync(tempAssPath); } catch {}
+      }
+      return outputPath;
     }
 
-    // Attempt with subtitles; fallback to clean frame if subtitle filter fails
+    // For crop layout
+    const offsetFactor = Math.max(-1, Math.min(1, cropOffsetXPercent / 100));
+    const vfFilters = `crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':'min(max(0,(iw-ow)/2+${offsetFactor}*(iw-ow)/2),iw-ow)':'(ih-oh)/2',scale=1080:1920,unsharp=3:3:0.8:3:3:0.4`;
+
     try {
-      const escapedAssPath = this.escapeFilterPath(tempAssPath);
-      await this.runThumbnailFfmpeg(`${vfFilters},subtitles=${escapedAssPath}`, sourceVideoPath, captureTime, outputPath);
+      await this.runThumbnailFfmpeg(`${vfFilters},subtitles=${this.escapeFilterPath(tempAssPath)}${fontsDirParam}`, sourceVideoPath, captureTime, outputPath);
     } catch {
       await this.runThumbnailFfmpeg(vfFilters, sourceVideoPath, captureTime, outputPath);
     } finally {
@@ -326,6 +370,33 @@ Dialogue: 0,0:00:00.00,0:00:10.00,Hook,,0,0,0,,{\\an5\\b1\\c&H00F0FF&\\3c&H00000
     }
 
     return outputPath;
+  }
+
+  private static runThumbnailComplexFfmpeg(filterComplex: string, videoPath: string, captureTime: number, outputPath: string): Promise<string> {
+    const args = [
+      '-y',
+      '-ss', captureTime.toFixed(3),
+      '-i', videoPath,
+      '-filter_complex', filterComplex,
+      '-map', '[out_v]',
+      '-vframes', '1',
+      '-q:v', '2',
+      outputPath
+    ];
+
+    return new Promise((resolve, reject) => {
+      const child = spawn('ffmpeg', args);
+      let stderr = '';
+      child.stderr.on('data', (d) => { stderr += d.toString(); });
+      child.on('close', (code) => {
+        if (code === 0 && fs.existsSync(outputPath)) {
+          resolve(outputPath);
+        } else {
+          reject(new Error(`Thumbnail complex failed (${code}): ${stderr.slice(-200)}`));
+        }
+      });
+      child.on('error', (err) => reject(err));
+    });
   }
 
   private static runThumbnailFfmpeg(vfFilters: string, videoPath: string, captureTime: number, outputPath: string): Promise<string> {
