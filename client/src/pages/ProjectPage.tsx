@@ -126,6 +126,22 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
     setClips((prev) => prev.filter((c) => c.id !== clipId));
   };
 
+  const handleApproveAll = async () => {
+    const readyClips = clips.filter((c) => c.status !== 'approved');
+    if (readyClips.length === 0) return;
+    try {
+      await Promise.all(
+        readyClips.map((c) => api.updateClip(c.id, { status: 'approved' }))
+      );
+      setClips((prev) =>
+        prev.map((c) => ({ ...c, status: 'approved' }))
+      );
+      onToast(`Approved all ${readyClips.length} clips! Ready for 1-click scheduling.`, 'success');
+    } catch (err: any) {
+      onToast(`Failed to approve clips: ${err.message}`, 'error');
+    }
+  };
+
   const handleBulkSchedule = async () => {
     if (!bulkChannelId) {
       onToast('Select a destination YouTube channel first', 'error');
@@ -248,6 +264,17 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
               <span className="text-zinc-500">SCHEDULED:</span>
               <span className="font-bold text-blue-400">{scheduledCount}</span>
             </div>
+          )}
+
+          {/* 1-Click Approve All Button */}
+          {clips.length > 0 && approvedCount < clips.length && (
+            <button
+              onClick={handleApproveAll}
+              className="flex items-center gap-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3.5 py-1.5 rounded-full text-xs font-semibold shadow-sm transition-all cursor-pointer"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Approve All ({clips.length - approvedCount} remaining)</span>
+            </button>
           )}
 
           {/* Bulk Schedule to Channel Button */}

@@ -161,7 +161,7 @@ export class SchedulerService {
   static autoScheduleApproved(channelId: string, clipsPerDay: number = 2, projectId?: string): { scheduledCount: number } {
     let query = `
       SELECT c.* FROM clips c
-      WHERE c.status = 'approved'
+      WHERE (c.status = 'approved' OR (c.status = 'draft' AND c.video_path IS NOT NULL))
       AND c.id NOT IN (SELECT clip_id FROM schedule_queue WHERE status IN ('scheduled', 'posting', 'posted'))
     `;
     const params: any[] = [];

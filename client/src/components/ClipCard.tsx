@@ -321,9 +321,10 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
             clip.video_path ? (
               <video
                 src={api.getVideoUrl(clip.id)}
+                poster={clip.thumbnail_path ? api.getThumbnailUrl(clip.id) : undefined}
                 controls
                 playsInline
-                preload="metadata"
+                preload="auto"
                 className="w-full h-full object-contain"
               />
             ) : (

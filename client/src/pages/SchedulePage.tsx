@@ -79,18 +79,22 @@ export const SchedulePage: React.FC<SchedulePageProps> = ({
       const [queueData, projectsData, clipsData] = await Promise.all([
         api.getSchedule(),
         api.getProjects(),
-        api.getClips({ status: 'approved' })
+        api.getClips()
       ]);
+
+      const readyClips = (Array.isArray(clipsData) ? clipsData : []).filter(
+        (c) => (c.status === 'approved' || c.status === 'draft') && c.video_path
+      );
 
       setQueue(queueData);
       setProjects(projectsData);
-      setApprovedClips(clipsData);
+      setApprovedClips(readyClips);
 
       // Auto-select first clip if available and none selected
-      if (clipsData.length > 0 && !selectedClipId) {
-        setSelectedClipId(clipsData[0].id);
-        if (clipsData[0].assigned_channel_id) {
-          setSelectedChannelId(clipsData[0].assigned_channel_id);
+      if (readyClips.length > 0 && !selectedClipId) {
+        setSelectedClipId(readyClips[0].id);
+        if (readyClips[0].assigned_channel_id) {
+          setSelectedChannelId(readyClips[0].assigned_channel_id);
         }
       }
     } catch (err: any) {
@@ -413,11 +417,11 @@ export const SchedulePage: React.FC<SchedulePageProps> = ({
                     className="w-full bg-black/40 border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-white/20 font-medium"
                   >
                     {selectableClips.length === 0 ? (
-                      <option value="">No approved clips available for this project</option>
+                      <option value="">No rendered clips available for this project</option>
                     ) : (
                       selectableClips.map((c) => (
                         <option key={c.id} value={c.id}>
-                          ★ {c.virality_score} — {c.title.substring(0, 48)} ({Math.round(c.end_time - c.start_time)}s)
+                          ★ {c.virality_score} — {c.title.substring(0, 48)} ({Math.round(c.end_time - c.start_time)}s) [{c.status}]
                         </option>
                       ))
                     )}
@@ -598,7 +602,7 @@ export const SchedulePage: React.FC<SchedulePageProps> = ({
               ) : (
                 <>
                   <CalendarDays className="w-3.5 h-3.5" />
-                  <span>Auto-Schedule Approved Clips ({approvedClips.length})</span>
+                  <span>Auto-Schedule Ready Clips ({approvedClips.length})</span>
                 </>
               )}
             </button>

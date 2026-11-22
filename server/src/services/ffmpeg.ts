@@ -140,7 +140,7 @@ export class FFmpegService {
   }
 
   /**
-   * Render a 9:16 vertical clip with subtitle fallback
+   * Render a 9:16 vertical clip with subtitle fallback and dynamic camera motion
    */
   static async renderClip(params: {
     sourceVideoPath: string;
@@ -148,6 +148,7 @@ export class FFmpegService {
     endTime: number;
     cropOffsetXPercent: number;
     layout?: 'blur_bg' | 'crop';
+    enablePunchZoom?: boolean;
     assSubtitlePath?: string;
     outputPath: string;
     onProgress?: (percent: number) => void;
@@ -172,6 +173,7 @@ export class FFmpegService {
       endTime: number;
       cropOffsetXPercent: number;
       layout?: 'blur_bg' | 'crop';
+      enablePunchZoom?: boolean;
       assSubtitlePath?: string;
       outputPath: string;
       onProgress?: (percent: number) => void;
@@ -181,6 +183,7 @@ export class FFmpegService {
     const { sourceVideoPath, startTime, endTime, cropOffsetXPercent, assSubtitlePath, outputPath } = params;
     const duration = endTime - startTime;
     const layout = params.layout || 'blur_bg';
+    const punchZoom = params.enablePunchZoom !== false;
 
     const hasSubtitles = includeSubtitles && assSubtitlePath && fs.existsSync(assSubtitlePath);
     const escapedAssPath = hasSubtitles ? this.escapeFilterPath(assSubtitlePath!) : '';
@@ -191,9 +194,12 @@ export class FFmpegService {
     let args: string[] = [];
 
     if (layout === 'blur_bg') {
-      // Hero Canvas Layout: High contrast blurred backdrop + sharpened center foreground
-      // 100% original video resolution is maintained with no cropped faces or zoom blur
-      let filterComplex = `[0:v]split=2[fg][bg];[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5,eq=brightness=-0.26:contrast=1.08,setpts=PTS-STARTPTS[bg_dark];[fg]scale=1080:-2,unsharp=3:3:0.7:3:3:0.3,setpts=PTS-STARTPTS[fg_scaled];[bg_dark][fg_scaled]overlay=0:(H-h)/2:shortest=1[canvas]`;
+      // Hero Canvas Layout: High contrast blurred backdrop + dynamic auto-zoom punch-ins on foreground
+      // Alternates between 100% framing and 115% face zoom every 4.5 seconds to reset viewer attention
+      const punchCrop = punchZoom
+        ? `crop=w='if(lt(mod(t,9),4.5),iw,trunc(iw*0.87/2)*2)':h='if(lt(mod(t,9),4.5),ih,trunc(ih*0.87/2)*2)':x='(iw-ow)/2':y='min(max(0,trunc((ih-oh)*0.35/2)*2),ih-oh)',`
+        : '';
+      let filterComplex = `[0:v]split=2[fg][bg];[bg]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5,eq=brightness=-0.26:contrast=1.08,setpts=PTS-STARTPTS[bg_dark];[fg]${punchCrop}scale=1080:-2,unsharp=3:3:0.7:3:3:0.3,setpts=PTS-STARTPTS[fg_scaled];[bg_dark][fg_scaled]overlay=0:(H-h)/2:shortest=1[canvas]`;
       if (hasSubtitles) {
         filterComplex += `;[canvas]subtitles=${escapedAssPath}${fontsDirParam}[v_out]`;
       } else {
@@ -205,7 +211,6 @@ export class FFmpegService {
         '-ss', startTime.toFixed(3),
         '-i', sourceVideoPath,
         '-t', duration.toFixed(3),
-        '-avoid_negative_ts', 'make_zero',
         '-filter_complex', filterComplex,
         '-map', '[v_out]',
         '-map', '0:a?',
@@ -213,6 +218,8 @@ export class FFmpegService {
         '-c:v', 'libx264',
         '-preset', 'fast',
         '-crf', '17',
+        '-g', '30',
+        '-keyint_min', '30',
         '-b:v', '5500k',
         '-maxrate', '7500k',
         '-bufsize', '10000k',
@@ -223,9 +230,11 @@ export class FFmpegService {
         outputPath
       ];
     } else {
-      // Smart 9:16 Center / Offset Crop with Lanczos resampling and unsharp mask
+      // Smart 9:16 Center / Offset Crop with Lanczos resampling, auto-zoom punch-ins and unsharp mask
       const offsetFactor = Math.max(-1, Math.min(1, cropOffsetXPercent / 100));
-      const cropExpr = `crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':'min(max(0,(iw-ow)/2+${offsetFactor}*(iw-ow)/2),iw-ow)':'(ih-oh)/2'`;
+      const cropExpr = punchZoom
+        ? `crop='if(lt(mod(t,9),4.5),min(iw,ih*9/16),trunc(min(iw,ih*9/16)*0.87/2)*2)':'if(lt(mod(t,9),4.5),min(ih,iw*16/9),trunc(min(ih,iw*16/9)*0.87/2)*2)':'min(max(0,(iw-ow)/2+${offsetFactor}*(iw-ow)/2),iw-ow)':'min(max(0,(ih-oh)*0.35),ih-oh)'`
+        : `crop='min(iw,ih*9/16)':'min(ih,iw*16/9)':'min(max(0,(iw-ow)/2+${offsetFactor}*(iw-ow)/2),iw-ow)':'(ih-oh)/2'`;
       const scaleExpr = `scale=1080:1920:flags=lanczos,unsharp=3:3:0.8:3:3:0.4`;
 
       let vfFilters = `setpts=PTS-STARTPTS,${cropExpr},${scaleExpr}`;
@@ -238,12 +247,13 @@ export class FFmpegService {
         '-ss', startTime.toFixed(3),
         '-i', sourceVideoPath,
         '-t', duration.toFixed(3),
-        '-avoid_negative_ts', 'make_zero',
         '-vf', vfFilters,
         '-af', 'loudnorm=I=-14:TP=-1.0:LRA=7,asetpts=PTS-STARTPTS',
         '-c:v', 'libx264',
         '-preset', 'fast',
         '-crf', '17',
+        '-g', '30',
+        '-keyint_min', '30',
         '-b:v', '5500k',
         '-maxrate', '7500k',
         '-bufsize', '10000k',

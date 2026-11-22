@@ -68,6 +68,42 @@ export const CAPTION_PRESETS: Record<CaptionPreset, { active: string; base: stri
   }
 };
 
+const VIRAL_EMOJI_MAP: Record<string, string> = {
+  MONEY: '💰',
+  CASH: '💵',
+  DOLLAR: '💵',
+  DOLLARS: '💵',
+  RICH: '🤑',
+  FIRE: '🔥',
+  CRAZY: '🤯',
+  INSANE: '⚡',
+  POLICE: '🚨',
+  COP: '🚨',
+  COPS: '🚨',
+  JAIL: '🔒',
+  PRISON: '🔒',
+  SECRET: '🤫',
+  DEAD: '💀',
+  KILL: '💀',
+  KILLED: '💀',
+  WIN: '🏆',
+  BEST: '🥇',
+  WARNING: '⚠️',
+  DANGER: '⚠️',
+  LOVE: '❤️',
+  FAST: '⚡',
+  ROCKET: '🚀',
+  TARGET: '🎯',
+  TIME: '⏳',
+  STOP: '🛑',
+  TRUTH: '👁️',
+  GAME: '🎮',
+  CAR: '🏎️',
+  SHOCK: '😱',
+  WOW: '🤯',
+  HYPE: '🔥'
+};
+
 /**
  * Format seconds into ASS subtitle timestamp format: H:MM:SS.cs (centiseconds)
  */
@@ -195,15 +231,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
       if (endT <= startT) continue;
 
-      // Construct formatted string
+      // Construct formatted string with contextual emoji pop
       const formattedWords = group.words.map((w, idx) => {
         const cleanWord = w.word.toUpperCase().replace(/[{}]/g, '');
+        const alphaOnly = cleanWord.replace(/[^A-Z]/g, '');
+        const emoji = VIRAL_EMOJI_MAP[alphaOnly] ? ' ' + VIRAL_EMOJI_MAP[alphaOnly] : '';
+
         if (idx === activeIdx) {
           if (animation === 'bounce') {
-            // Videocaptions.ai kinetic zoom pop: word pops up to 120% scale with active color
-            return `{\\c${activeColor}\\b1\\fscx120\\fscy120}${cleanWord}{\\r\\c${baseColor}}`;
+            // Videocaptions.ai kinetic zoom pop: word pops up to 122% scale with active color & emoji
+            return `{\\c${activeColor}\\b1\\fscx122\\fscy122}${cleanWord}${emoji}{\\r\\c${baseColor}}`;
           }
-          return `{\\c${activeColor}\\b1}${cleanWord}{\\r\\c${baseColor}}`;
+          return `{\\c${activeColor}\\b1}${cleanWord}${emoji}{\\r\\c${baseColor}}`;
         }
         return `{\\c${baseColor}\\b1}${cleanWord}`;
       });
