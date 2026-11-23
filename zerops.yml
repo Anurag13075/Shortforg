@@ -21,11 +21,11 @@ zerops:
     run:
       base: nodejs@22
       prepareCommands:
-        # Install FFmpeg, fonts, gcompat, python3, pip, and pure-Python yt-dlp natively on Alpine
+        # Install FFmpeg, fonts, gcompat, python3, pip, and pure-Python yt-dlp with EJS solver natively on Alpine
         - apk add --no-cache ffmpeg ttf-dejavu fontconfig python3 py3-pip gcompat curl ca-certificates || true
         - mkdir -p /usr/share/fonts/truetype/custom && cp server/fonts/*.ttf /usr/share/fonts/truetype/custom/ 2>/dev/null || true
         - fc-cache -f 2>/dev/null || true
-        - python3 -m pip install --no-cache-dir --break-system-packages -U yt-dlp || pip3 install --no-cache-dir -U yt-dlp || apk add --no-cache yt-dlp || true
+        - python3 -m pip install --no-cache-dir --break-system-packages -U yt-dlp yt-dlp-ejs || pip3 install --no-cache-dir -U yt-dlp yt-dlp-ejs || apk add --no-cache yt-dlp || true
       start: node server/dist/index.js
       ports:
         - port: 3001

@@ -109,7 +109,8 @@ async function runYtDlpWithClient(
 
     const args = [
       '--js-runtimes', 'node',
-      '-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b',
+      '--remote-components', 'ejs:github',
+      '-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b/best',
       '--merge-output-format', 'mp4',
       '--extractor-args', `youtube:player_client=${playerClient}`,
       '--no-playlist',
@@ -393,8 +394,14 @@ export async function downloadYouTubeVideo(
   // 2. Self-Hosted yt-dlp Engine with multi-client spoofing
   const ytDlpCmd = await ensureYtDlpBinary();
 
-  // Try android,web with Node.js n-challenge solver, then ios, then android, then tv, then web
-  const clientsToTry = ['android,web', 'ios,android', 'android', 'tv,android', 'web'];
+  // Check if cookies are present
+  const cookiesStoragePath = path.join(CONFIG.STORAGE_DIR, 'cookies.txt');
+  const hasCookies = fs.existsSync(cookiesStoragePath) && fs.statSync(cookiesStoragePath).size > 50;
+
+  // When cookies are present, web and tv_samsung clients match the exported cookie jar best
+  const clientsToTry = hasCookies
+    ? ['web', 'tv_samsung,web', 'mweb', 'android,web']
+    : ['android,web', 'tv_samsung', 'ios', 'android', 'web'];
   let lastYtDlpError: string = '';
 
   for (const client of clientsToTry) {

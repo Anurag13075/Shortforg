@@ -149,15 +149,7 @@ export class SchedulerService {
     return new Date(targetUtcMs);
   }
 
-  /**
-   * Auto-schedule approved clips that are not yet in the queue
-   * Spreads them 1 clip per slot across Indian Standard Time (IST) peak consumption windows:
-   * - Slot 1: 09:00 AM IST (Morning boost)
-   * - Slot 2: 01:30 PM IST (Lunch prime)
-   * - Slot 3: 06:30 PM IST (Evening viral)
-   * - Slot 4: 09:00 PM IST (Late evening prime)
-   * Supports optional filtering by projectId
-   */
+  
   static autoScheduleApproved(channelId: string, clipsPerDay: number = 2, projectId?: string): { scheduledCount: number } {
     let query = `
       SELECT c.* FROM clips c
@@ -256,3 +248,4 @@ export class SchedulerService {
     return { scheduledCount };
   }
 }
+
