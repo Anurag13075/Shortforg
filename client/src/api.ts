@@ -1,4 +1,4 @@
-import { Project, Clip, Channel, QueueItem, HealthInfo } from './types';
+import { Project, Clip, Channel, QueueItem, HealthInfo, LongformProject, LongformChapter } from './types';
 
 const BASE_URL = '';
 
@@ -398,5 +398,115 @@ export const api = {
       body: JSON.stringify({ actions })
     });
     return (res as any)?.data !== undefined ? (res as any).data : res;
+  },
+
+  // Long-Form Video Studio API
+  getLongformProjects: async (): Promise<LongformProject[]> => {
+    try {
+      const projects = await request<LongformProject[]>('/api/longform');
+      if (Array.isArray(projects) && projects.length > 0) {
+        try {
+          localStorage.setItem('sf_longform_vault', JSON.stringify(projects));
+        } catch {}
+        return projects;
+      }
+      const cached = localStorage.getItem('sf_longform_vault');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          await request<{ success: boolean; synced: number }>('/api/longform/sync', {
+            method: 'POST',
+            body: JSON.stringify({ projects: parsed })
+          });
+          return await request<LongformProject[]>('/api/longform');
+        }
+      }
+      return projects || [];
+    } catch (e) {
+      const cached = localStorage.getItem('sf_longform_vault');
+      if (cached) {
+        try { return JSON.parse(cached); } catch {}
+      }
+      throw e;
+    }
+  },
+
+  getLongformProject: async (id: string): Promise<LongformProject> => {
+    try {
+      const data = await request<LongformProject>(`/api/longform/${id}`);
+      if (data) {
+        try {
+          localStorage.setItem(`sf_lf_proj_${id}`, JSON.stringify(data));
+        } catch {}
+      }
+      return data;
+    } catch (err: any) {
+      const cached = localStorage.getItem(`sf_lf_proj_${id}`);
+      if (cached) {
+        try { return JSON.parse(cached); } catch {}
+      }
+      throw err;
+    }
+  },
+
+  getLongformLogs: (id: string) => request<any[]>(`/api/longform/${id}/logs`),
+
+  createLongformProject: (topic: string, sourceUrls: string[], targetDuration: number = 600) =>
+    request<LongformProject>('/api/longform', {
+      method: 'POST',
+      body: JSON.stringify({ topic, sourceUrls, targetDuration })
+    }),
+
+  retryLongformProject: (id: string) =>
+    request<LongformProject>(`/api/longform/${id}/retry`, { method: 'POST' }),
+
+  reRenderLongformProject: (id: string, chapters: LongformChapter[]) =>
+    request<{ success: boolean; message: string }>(`/api/longform/${id}/render`, {
+      method: 'POST',
+      body: JSON.stringify({ chapters })
+    }),
+
+  deleteLongformProject: (id: string) =>
+    request<{ success: boolean; message: string }>(`/api/longform/${id}`, { method: 'DELETE' }),
+
+  assignLongformChannel: (id: string, channel_id: string | null) =>
+    request<{ success: boolean; message: string }>(`/api/longform/${id}/assign-channel`, {
+      method: 'POST',
+      body: JSON.stringify({ channel_id })
+    }),
+
+  getLongformVideoUrl: (id: string) => `/api/longform/${id}/video`,
+  getLongformThumbnailUrl: (id: string) => `/api/longform/${id}/thumbnail`,
+  getLongformDownloadUrl: (id: string) => `/api/longform/${id}/download`,
+
+  subscribeLongformProgress: (
+    projectId: string,
+    callback: (data: {
+      projectId: string;
+      status: string;
+      progress: number;
+      stageMessage: string;
+      errorMessage?: string | null;
+      log?: { timestamp: string; level: 'info' | 'warn' | 'error' | 'success'; message: string };
+    }) => void
+  ): (() => void) => {
+    const eventSource = new EventSource(`/api/longform/${projectId}/progress`);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        callback(data);
+      } catch (err) {
+        console.error('Failed to parse longform SSE message:', err);
+      }
+    };
+
+    eventSource.onerror = () => {
+      // Browser handles reconnect
+    };
+
+    return () => {
+      eventSource.close();
+    };
   }
 };

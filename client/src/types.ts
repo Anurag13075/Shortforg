@@ -118,3 +118,40 @@ export interface CopilotMessage {
   executed?: boolean;
   timestamp: string;
 }
+
+export interface LongformChapter {
+  id: string;
+  title: string;
+  source_index: number;
+  source_url: string;
+  source_title: string;
+  start_time: number;
+  end_time: number;
+  duration: number;
+  hook_text?: string;
+  summary?: string;
+  order: number;
+}
+
+export interface LongformProject {
+  id: string;
+  title: string | null;
+  topic: string;
+  source_urls: string[] | string;
+  target_duration: number;
+  actual_duration: number;
+  status: 'pending' | 'downloading' | 'transcribing' | 'scripting' | 'rendering' | 'completed' | 'failed';
+  progress: number;
+  stage_message: string;
+  error_message: string | null;
+  chapters?: LongformChapter[];
+  chapter_count?: number;
+  script_outline: string | null;
+  video_path: string | null;
+  thumbnail_path: string | null;
+  assigned_channel_id: string | null;
+  channel_title?: string;
+  channel_avatar?: string;
+  created_at: string;
+  updated_at: string;
+}

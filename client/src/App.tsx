@@ -4,6 +4,7 @@ import { Navbar } from './components/Navbar';
 import { HomePage } from './pages/HomePage';
 import { ProjectPage } from './pages/ProjectPage';
 import { SchedulePage } from './pages/SchedulePage';
+import { LongformPage } from './pages/LongformPage';
 import { StudioCopilot } from './components/StudioCopilot';
 import { CookieModal } from './components/CookieModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
@@ -12,17 +13,17 @@ import { api } from './api';
 
 export function App() {
   // Initialize tab and project from URL query or localStorage
-  const [currentTab, setCurrentTab] = useState<'home' | 'project' | 'schedule' | 'copilot'>(() => {
+  const [currentTab, setCurrentTab] = useState<'home' | 'project' | 'schedule' | 'copilot' | 'longform'>(() => {
     const params = new URLSearchParams(window.location.search);
     if (window.location.pathname.includes('/schedule') || params.has('auth')) {
       return 'schedule';
     }
     const tabParam = params.get('tab');
-    if (tabParam === 'home' || tabParam === 'project' || tabParam === 'schedule' || tabParam === 'copilot') {
+    if (tabParam === 'home' || tabParam === 'project' || tabParam === 'schedule' || tabParam === 'copilot' || tabParam === 'longform') {
       return tabParam;
     }
     const cached = localStorage.getItem('shortsforge_tab');
-    if (cached === 'project' || cached === 'schedule' || cached === 'copilot') {
+    if (cached === 'project' || cached === 'schedule' || cached === 'copilot' || cached === 'longform') {
       return cached;
     }
     return 'home';
@@ -84,7 +85,7 @@ export function App() {
   };
 
   // Sync tab and project state to localStorage and history URL
-  const handleSelectTab = (tab: 'home' | 'project' | 'schedule' | 'copilot') => {
+  const handleSelectTab = (tab: 'home' | 'project' | 'schedule' | 'copilot' | 'longform') => {
     setCurrentTab(tab);
     localStorage.setItem('shortsforge_tab', tab);
 
@@ -202,6 +203,13 @@ export function App() {
               channels={channels}
               onRefreshChannels={refreshChannels}
               onNavigateToCopilot={() => handleSelectTab('copilot')}
+              onToast={addToast}
+            />
+          )}
+
+          {currentTab === 'longform' && (
+            <LongformPage
+              channels={channels}
               onToast={addToast}
             />
           )}

@@ -177,9 +177,31 @@ export function initDatabase() {
       FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS longform_projects (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      topic TEXT NOT NULL,
+      source_urls TEXT NOT NULL, -- JSON array of strings
+      target_duration REAL DEFAULT 600,
+      actual_duration REAL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending', -- pending, downloading, transcribing, scripting, rendering, completed, failed
+      progress REAL DEFAULT 0,
+      stage_message TEXT DEFAULT '',
+      error_message TEXT,
+      chapters TEXT, -- JSON array of LongformChapter
+      script_outline TEXT,
+      video_path TEXT,
+      thumbnail_path TEXT,
+      assigned_channel_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (assigned_channel_id) REFERENCES channels(id) ON DELETE SET NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_clips_project_id ON clips(project_id);
     CREATE INDEX IF NOT EXISTS idx_clips_status ON clips(status);
     CREATE INDEX IF NOT EXISTS idx_queue_scheduled_time ON schedule_queue(scheduled_time, status);
+    CREATE INDEX IF NOT EXISTS idx_longform_status ON longform_projects(status);
   `);
 
   try {
@@ -284,6 +306,40 @@ export interface QueueRecord {
   retry_count: number;
   error_message: string | null;
   posted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LongformChapter {
+  id: string;
+  title: string;
+  source_index: number;
+  source_url: string;
+  source_title: string;
+  start_time: number;
+  end_time: number;
+  duration: number;
+  hook_text?: string;
+  summary?: string;
+  order: number;
+}
+
+export interface LongformProjectRecord {
+  id: string;
+  title: string | null;
+  topic: string;
+  source_urls: string; // JSON array of string URLs
+  target_duration: number;
+  actual_duration: number;
+  status: 'pending' | 'downloading' | 'transcribing' | 'scripting' | 'rendering' | 'completed' | 'failed';
+  progress: number;
+  stage_message: string;
+  error_message: string | null;
+  chapters: string | null; // JSON array of LongformChapter
+  script_outline: string | null;
+  video_path: string | null;
+  thumbnail_path: string | null;
+  assigned_channel_id: string | null;
   created_at: string;
   updated_at: string;
 }

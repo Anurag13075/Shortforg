@@ -7,13 +7,14 @@ import {
   Plus,
   Terminal,
   Cpu,
-  Bot
+  Bot,
+  Video
 } from 'lucide-react';
 import { HealthInfo, Channel } from '../types';
 
 interface SidebarProps {
-  currentTab: 'home' | 'project' | 'schedule' | 'copilot';
-  onSelectTab: (tab: 'home' | 'project' | 'schedule' | 'copilot') => void;
+  currentTab: 'home' | 'project' | 'schedule' | 'copilot' | 'longform';
+  onSelectTab: (tab: 'home' | 'project' | 'schedule' | 'copilot' | 'longform') => void;
   activeProjectId: string | null;
   channels: Channel[];
   health: HealthInfo | null;
@@ -85,6 +86,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span>Clips Studio</span>
             </button>
           )}
+
+          <button
+            onClick={() => onSelectTab('longform')}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+              currentTab === 'longform'
+                ? 'bg-gradient-to-r from-purple-900/60 to-indigo-900/60 border border-purple-500/30 text-white font-semibold shadow-sm'
+                : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Video className="w-4 h-4 text-purple-400" />
+              <span>Long-Form Studio</span>
+            </div>
+            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/10 border border-purple-500/20 text-purple-300 font-semibold">
+              1080p
+            </span>
+          </button>
 
           <button
             onClick={() => onSelectTab('schedule')}

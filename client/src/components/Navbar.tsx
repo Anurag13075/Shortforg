@@ -1,10 +1,10 @@
 import React from 'react';
-import { Layers, Film, Calendar, Terminal, Search, Bot, KeyRound } from 'lucide-react';
+import { Layers, Film, Calendar, Terminal, Search, Bot, KeyRound, Video } from 'lucide-react';
 import { HealthInfo } from '../types';
 
 interface NavbarProps {
-  currentTab: 'home' | 'project' | 'schedule' | 'copilot';
-  onSelectTab: (tab: 'home' | 'project' | 'schedule' | 'copilot') => void;
+  currentTab: 'home' | 'project' | 'schedule' | 'copilot' | 'longform';
+  onSelectTab: (tab: 'home' | 'project' | 'schedule' | 'copilot' | 'longform') => void;
   activeProjectId: string | null;
   health: HealthInfo | null;
   hasCookies?: boolean;
@@ -92,6 +92,18 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           <Calendar className="w-3.5 h-3.5" />
           <span>Queue</span>
+        </button>
+
+        <button
+          onClick={() => onSelectTab('longform')}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+            currentTab === 'longform'
+              ? 'bg-purple-900/60 text-purple-200 border border-purple-500/30 font-semibold shadow-sm'
+              : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          <Video className="w-3.5 h-3.5 text-purple-400" />
+          <span>LongForm</span>
         </button>
 
         <button

@@ -18,6 +18,7 @@ import { scheduleRouter } from './routes/schedule.js';
 import { authRouter } from './routes/auth.js';
 import { copilotRouter } from './routes/copilot.js';
 import { cookiesRouter } from './routes/cookies.js';
+import { longformRouter } from './routes/longform.js';
 
 const app = express();
 
@@ -78,6 +79,7 @@ app.use('/api/channels', channelsRouter);
 app.use('/api/schedule', scheduleRouter);
 app.use('/api/copilot', copilotRouter);
 app.use('/api/cookies', cookiesRouter);
+app.use('/api/longform', longformRouter);
 app.use('/auth', authRouter);
 
 // Health & System Info
