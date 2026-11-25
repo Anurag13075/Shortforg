@@ -19,7 +19,7 @@ import { authRouter } from './routes/auth.js';
 import { copilotRouter } from './routes/copilot.js';
 import { cookiesRouter } from './routes/cookies.js';
 import { longformRouter } from './routes/longform.js';
-import { ensureYtDlpBinary } from './services/downloader.js';
+import { ensureYtDlpBinary, ensureLatestYtDlp } from './services/downloader.js';
 import { execSync } from 'child_process';
 
 const app = express();
@@ -158,6 +158,7 @@ if (fs.existsSync(clientDist)) {
 // Start Scheduler & HTTP Server
 // ----------------------------------------------------------------------------
 SchedulerService.startScheduler();
+ensureLatestYtDlp().catch(() => {});
 
 app.listen(CONFIG.PORT, () => {
   console.log(`🚀 ShortsForge Backend running on http://localhost:${CONFIG.PORT}`);
