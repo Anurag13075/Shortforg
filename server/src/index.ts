@@ -19,7 +19,7 @@ import { authRouter } from './routes/auth.js';
 import { copilotRouter } from './routes/copilot.js';
 import { cookiesRouter } from './routes/cookies.js';
 import { longformRouter } from './routes/longform.js';
-import { ensureYtDlpBinary, ensureLatestYtDlp } from './services/downloader.js';
+import { ensureYtDlpBinary, ensureLatestYtDlp, getYtDlpEnv, lastYtdlpUpdateStatus } from './services/downloader.js';
 import { execSync } from 'child_process';
 
 const app = express();
@@ -101,11 +101,13 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/health/ytdlp', async (_req, res) => {
   try {
+    await ensureLatestYtDlp();
+    const env = getYtDlpEnv();
     const cmd = await ensureYtDlpBinary();
-    const version = execSync(`${cmd} --version`, { timeout: 5000 }).toString().trim();
+    const version = execSync(`${cmd} --version`, { timeout: 5000, env }).toString().trim();
     let ejsStatus = 'unknown';
     try {
-      ejsStatus = execSync(`python3 -c "import yt_dlp_ejs; print(yt_dlp_ejs.__file__)"`, { timeout: 5000 }).toString().trim();
+      ejsStatus = execSync(`python3 -c "import yt_dlp_ejs; print(yt_dlp_ejs.__file__)"`, { timeout: 5000, env }).toString().trim();
     } catch (e: any) {
       ejsStatus = `missing: ${e.message}`;
     }
@@ -122,7 +124,7 @@ app.get('/api/health/ytdlp', async (_req, res) => {
       const cookieArg = fs.existsSync(cookiesPath) ? `--cookies "${cookiesPath}"` : '';
       testListFormats = execSync(
         `${cmd} --js-runtimes "node:${process.execPath}" --remote-components ejs:github ${cookieArg} --extractor-args "youtube:player_client=web" -F "https://www.youtube.com/watch?v=8-DRGbQ1IXc" 2>&1`,
-        { timeout: 25000 }
+        { timeout: 25000, env }
       ).toString().slice(-1500);
     } catch (e: any) {
       testListFormats = (e.stdout?.toString() || e.stderr?.toString() || e.message).slice(-1500);
@@ -130,6 +132,7 @@ app.get('/api/health/ytdlp', async (_req, res) => {
     res.json({
       cmd,
       version,
+      updateStatus: lastYtdlpUpdateStatus,
       nodeExecPath: process.execPath,
       nodeVersion: process.version,
       ejsStatus,

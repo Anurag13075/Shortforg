@@ -16,32 +16,53 @@ export interface DownloadResult {
 
 let cachedYtDlpPath: string | null = null;
 let ytdlpUpdatePromise: Promise<void> | null = null;
+export let lastYtdlpUpdateStatus: string = 'not_run';
+
+export function getPyLibsDir(): string {
+  return path.join(CONFIG.DATA_DIR, 'pylibs');
+}
+
+export function getYtDlpEnv(): NodeJS.ProcessEnv {
+  const pyLibs = getPyLibsDir();
+  if (fs.existsSync(pyLibs)) {
+    return {
+      ...process.env,
+      PYTHONPATH: process.env.PYTHONPATH ? `${pyLibs}${path.delimiter}${process.env.PYTHONPATH}` : pyLibs
+    };
+  }
+  return process.env;
+}
 
 /**
- * Automatically upgrades yt-dlp and yt-dlp-ejs on container boot if the cached
- * runtime image has an outdated version (e.g. >30 days old).
+ * Automatically installs/upgrades yt-dlp and yt-dlp-ejs into a writable DATA_DIR/pylibs
+ * folder on container boot so we never get stuck on an outdated cached runtime version.
  */
 export function ensureLatestYtDlp(): Promise<void> {
   if (ytdlpUpdatePromise) return ytdlpUpdatePromise;
 
   ytdlpUpdatePromise = (async () => {
     try {
-      const cmd = await ensureYtDlpBinary();
-      if (cmd !== 'python3 -m yt_dlp') return;
-      const currentVer = execSync('python3 -m yt_dlp --version', { stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000 }).toString().trim();
-      // If version is older than 2026.10, upgrade yt-dlp and yt-dlp-ejs
+      const pyLibs = getPyLibsDir();
+      if (!fs.existsSync(pyLibs)) {
+        fs.mkdirSync(pyLibs, { recursive: true });
+      }
+      const env = getYtDlpEnv();
+      const currentVer = execSync('python3 -m yt_dlp --version', { stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000, env }).toString().trim();
       if (currentVer < '2026.10') {
-        console.log(`⬆️ Outdated yt-dlp (${currentVer}) detected. Upgrading yt-dlp & yt-dlp-ejs...`);
-        execSync('python3 -m pip install --no-cache-dir --break-system-packages -U yt-dlp yt-dlp-ejs', {
+        console.log(`⬆️ Outdated yt-dlp (${currentVer}) detected. Installing latest yt-dlp & yt-dlp-ejs into ${pyLibs}...`);
+        execSync(`python3 -m pip install --no-cache-dir --break-system-packages --upgrade --target "${pyLibs}" yt-dlp yt-dlp-ejs`, {
           stdio: ['ignore', 'pipe', 'pipe'],
-          timeout: 60000
+          timeout: 90000
         });
-        const newVer = execSync('python3 -m yt_dlp --version', { stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000 }).toString().trim();
+        const newVer = execSync('python3 -m yt_dlp --version', { stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000, env: getYtDlpEnv() }).toString().trim();
+        lastYtdlpUpdateStatus = `upgraded ${currentVer} -> ${newVer}`;
         console.log(`✅ yt-dlp upgraded to ${newVer}`);
       } else {
+        lastYtdlpUpdateStatus = `up_to_date (${currentVer})`;
         console.log(`✅ yt-dlp is up to date (${currentVer})`);
       }
     } catch (err: any) {
+      lastYtdlpUpdateStatus = `failed: ${err.message}`;
       console.warn('yt-dlp auto-upgrade skipped/failed:', err.message);
     }
   })();
@@ -165,7 +186,7 @@ async function runYtDlpWithClient(
     args.push(youtubeUrl);
 
     const [bin, ...extraArgs] = ytDlpCmd.split(' ');
-    const child = spawn(bin, [...extraArgs, ...args]);
+    const child = spawn(bin, [...extraArgs, ...args], { env: getYtDlpEnv() });
     let stdout = '';
     let stderr = '';
 
