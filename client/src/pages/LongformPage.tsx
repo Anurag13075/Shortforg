@@ -20,7 +20,10 @@ import {
   Layers,
   ChevronRight,
   ExternalLink,
-  Edit2
+  Edit2,
+  Calendar,
+  Image as ImageIcon,
+  Send
 } from 'lucide-react';
 import { LongformProject, LongformChapter, Channel } from '../types';
 import { api } from '../api';
@@ -77,6 +80,25 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
   const [editedChapters, setEditedChapters] = useState<LongformChapter[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [selectedChannelId, setSelectedChannelId] = useState<string>('');
+
+  // Video & Thumbnail Preview Switcher
+  const [previewMode, setPreviewMode] = useState<'video' | 'thumbnail'>('video');
+
+  // Custom Scheduling State
+  const [scheduledDateTime, setScheduledDateTime] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(18, 0, 0, 0);
+    // Format: YYYY-MM-DDTHH:mm
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${mins}`;
+  });
+  const [publishNow, setPublishNow] = useState(false);
+  const [isScheduling, setIsScheduling] = useState(false);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -321,6 +343,68 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
     }
   };
 
+  const handleSchedule = async (isImmediate = false) => {
+    if (!activeProjectId) return;
+    if (!selectedChannelId) {
+      onToast('Please select a target YouTube channel first', 'error');
+      return;
+    }
+    setIsScheduling(true);
+    try {
+      const res = await api.scheduleLongformProject(
+        activeProjectId,
+        selectedChannelId,
+        isImmediate ? undefined : new Date(scheduledDateTime).toISOString(),
+        isImmediate
+      );
+      onToast(res.message, 'success');
+      if (res.data) {
+        setActiveProject(res.data);
+      }
+    } catch (err: any) {
+      onToast(`Scheduling failed: ${err.message}`, 'error');
+    } finally {
+      setIsScheduling(false);
+    }
+  };
+
+  const handleCancelSchedule = async () => {
+    if (!activeProjectId) return;
+    try {
+      const res = await api.cancelLongformSchedule(activeProjectId);
+      onToast('Scheduled upload cancelled', 'info');
+      if (res.data) {
+        setActiveProject(res.data);
+      }
+    } catch (err: any) {
+      onToast(`Cancel failed: ${err.message}`, 'error');
+    }
+  };
+
+  const applyTimePreset = (option: 'today_6pm' | 'tmrw_10am' | 'tmrw_6pm' | 'in_2d_6pm') => {
+    const d = new Date();
+    if (option === 'today_6pm') {
+      d.setHours(18, 0, 0, 0);
+    } else if (option === 'tmrw_10am') {
+      d.setDate(d.getDate() + 1);
+      d.setHours(10, 0, 0, 0);
+    } else if (option === 'tmrw_6pm') {
+      d.setDate(d.getDate() + 1);
+      d.setHours(18, 0, 0, 0);
+    } else if (option === 'in_2d_6pm') {
+      d.setDate(d.getDate() + 2);
+      d.setHours(18, 0, 0, 0);
+    }
+
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hours = String(d.getHours()).padStart(2, '0');
+    const mins = String(d.getMinutes()).padStart(2, '0');
+    setScheduledDateTime(`${year}-${month}-${day}T${hours}:${mins}`);
+    setPublishNow(false);
+  };
+
   const copyToClipboard = (text: string, fieldKey: string) => {
     navigator.clipboard.writeText(text);
     setCopiedField(fieldKey);
@@ -492,24 +576,78 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
             {/* Player Column */}
             <div className="lg:col-span-2 space-y-4">
               <div className="studio-card p-4 border-white/[0.08] relative overflow-hidden group">
-                <div className="flex items-center justify-between pb-3 border-b border-white/[0.06] mb-3">
-                  <div className="flex items-center gap-2">
-                    <Play className="w-4 h-4 text-purple-400" />
-                    <span className="text-xs font-bold text-white tracking-wide">16:9 CINEMA MASTER PREVIEW</span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-white/[0.06] mb-3 gap-2">
+                  <div className="flex items-center gap-1.5 p-0.5 rounded-lg bg-black/40 border border-white/[0.08]">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewMode('video')}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                        previewMode === 'video'
+                          ? 'bg-purple-600 text-white shadow-sm'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      1080p Video Player
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewMode('thumbnail')}
+                      className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold transition-all ${
+                        previewMode === 'thumbnail'
+                          ? 'bg-purple-600 text-white shadow-sm'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      16:9 Thumbnail Preview
+                    </button>
                   </div>
-                  <span className="text-[10px] font-mono text-zinc-500">1920x1080 • -14 LUFS Normalized</span>
+                  <span className="text-[10px] font-mono text-zinc-500">
+                    {previewMode === 'video' ? '1920x1080 • -14 LUFS Normalized' : '1920x1080 High CTR Cover'}
+                  </span>
                 </div>
 
                 <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black flex items-center justify-center border border-white/[0.08]">
                   {activeProject.video_path && activeProject.status === 'completed' ? (
-                    <video
-                      controls
-                      playsInline
-                      poster={api.getLongformThumbnailUrl(activeProject.id)}
-                      src={api.getLongformVideoUrl(activeProject.id)}
-                      className="w-full h-full object-contain"
-                      preload="auto"
-                    />
+                    previewMode === 'video' ? (
+                      <video
+                        controls
+                        playsInline
+                        poster={api.getLongformThumbnailUrl(activeProject.id)}
+                        src={api.getLongformVideoUrl(activeProject.id)}
+                        className="w-full h-full object-contain"
+                        preload="auto"
+                      />
+                    ) : (
+                      <div className="relative w-full h-full group/thumb">
+                        <img
+                          src={api.getLongformThumbnailUrl(activeProject.id)}
+                          alt="16:9 Thumbnail Preview"
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end justify-between p-4 opacity-90 group-hover/thumb:opacity-100 transition-opacity">
+                          <div>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold uppercase tracking-wide">
+                              HIGH CTR 16:9 THUMBNAIL
+                            </span>
+                            <p className="text-xs font-bold text-white mt-1 truncate max-w-md">
+                              {activeProject.title || activeProject.topic}
+                            </p>
+                          </div>
+                          <a
+                            href={api.getLongformThumbnailUrl(activeProject.id)}
+                            download="thumbnail_1080p.jpg"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Download Cover
+                          </a>
+                        </div>
+                      </div>
+                    )
                   ) : (
                     <div className="flex flex-col items-center justify-center p-8 text-center space-y-3">
                       {activeProject.status === 'failed' ? (
@@ -533,29 +671,254 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                   )}
                 </div>
 
-                {/* Destination YouTube Channel Assignment */}
+                {/* Destination YouTube Channel Quick Indicator */}
                 <div className="flex items-center justify-between pt-3 mt-3 border-t border-white/[0.06]">
                   <div className="flex items-center gap-2">
                     <Youtube className="w-4 h-4 text-red-500" />
-                    <span className="text-xs text-zinc-300 font-medium">Target Channel:</span>
-                    <select
-                      value={selectedChannelId}
-                      onChange={(e) => handleAssignChannel(e.target.value)}
-                      className="bg-black/40 border border-white/[0.08] rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-purple-500/50"
-                    >
-                      <option value="">No channel assigned</option>
-                      {channels.map((ch) => (
-                        <option key={ch.id} value={ch.id}>
-                          {ch.title} {ch.status === 'active' ? '✓' : '(Reconnect)'}
-                        </option>
-                      ))}
-                    </select>
+                    <span className="text-xs text-zinc-300 font-medium">Assigned Channel:</span>
+                    <span className="text-xs font-bold text-white">
+                      {channels.find((c) => c.id === selectedChannelId)?.title || activeProject.channel_title || 'None Selected'}
+                    </span>
                   </div>
 
                   <span className="text-[11px] text-zinc-500 font-mono">
                     {activeProject.chapters?.length || 0} Narrative Chapters
                   </span>
                 </div>
+              </div>
+
+              {/* YouTube Automated Scheduling & Publishing Control Dock */}
+              <div className="studio-card p-5 border-white/[0.08] space-y-4">
+                <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+                  <div className="flex items-center gap-2">
+                    <Youtube className="w-4 h-4 text-red-500" />
+                    <span className="text-xs font-bold text-white tracking-wide">YOUTUBE SCHEDULE & PUBLICATION DOCK</span>
+                  </div>
+                  {activeProject.schedule_status && activeProject.schedule_status !== 'none' && (
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold uppercase tracking-wider ${
+                      activeProject.schedule_status === 'posted'
+                        ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                        : activeProject.schedule_status === 'scheduled'
+                        ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300 animate-pulse'
+                        : activeProject.schedule_status === 'posting'
+                        ? 'bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 animate-pulse'
+                        : 'bg-rose-500/20 border border-rose-500/40 text-rose-300'
+                    }`}>
+                      {activeProject.schedule_status === 'posted' ? '✓ PUBLISHED TO YOUTUBE' : activeProject.schedule_status.toUpperCase()}
+                    </span>
+                  )}
+                </div>
+
+                {/* Case 1: Video Already Published */}
+                {activeProject.schedule_status === 'posted' && (
+                  <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        Successfully Published to YouTube Channel!
+                      </div>
+                      <p className="text-[11px] font-mono text-zinc-400">
+                        Published at {activeProject.posted_at ? new Date(activeProject.posted_at).toLocaleString('en-IN') : 'recently'}
+                      </p>
+                    </div>
+                    {activeProject.youtube_video_id && (
+                      <a
+                        href={`https://youtube.com/watch?v=${activeProject.youtube_video_id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-500 text-white transition-all shadow-sm"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Watch on YouTube
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Case 2: Video Currently Scheduled */}
+                {activeProject.schedule_status === 'scheduled' && (
+                  <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/30 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                        <Clock className="w-4 h-4 text-amber-400 animate-pulse" />
+                        Scheduled for Auto-Upload by 1-Minute Cron Worker
+                      </div>
+                      <button
+                        onClick={handleCancelSchedule}
+                        className="text-[11px] font-mono text-zinc-400 hover:text-rose-400 px-2.5 py-1 rounded-lg bg-black/40 border border-white/[0.08] transition-colors"
+                      >
+                        Cancel Schedule
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
+                      <div className="p-2.5 rounded-lg bg-black/40 border border-white/[0.06]">
+                        <span className="text-zinc-500 block mb-0.5">Scheduled Publish Time (IST):</span>
+                        <span className="text-amber-200 font-bold text-xs">
+                          {activeProject.scheduled_time ? new Date(activeProject.scheduled_time).toLocaleString('en-IN') : 'Pending'}
+                        </span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-black/40 border border-white/[0.06]">
+                        <span className="text-zinc-500 block mb-0.5">Target Destination Channel:</span>
+                        <span className="text-white font-bold text-xs">
+                          {channels.find((c) => c.id === activeProject.assigned_channel_id)?.title || activeProject.channel_title || 'VICECLIPS'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Case 3: Video Ready - Configure Date/Time or Instant Upload */}
+                {activeProject.status === 'completed' && activeProject.schedule_status !== 'posted' && (
+                  <div className="space-y-4">
+                    {/* Switcher: Schedule vs Publish Now */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setPublishNow(false)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                          !publishNow
+                            ? 'bg-purple-600 text-white shadow-sm'
+                            : 'text-zinc-400 hover:text-white bg-white/[0.04]'
+                        }`}
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        Pick Custom Schedule Time
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPublishNow(true)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                          publishNow
+                            ? 'bg-red-600 text-white shadow-sm'
+                            : 'text-zinc-400 hover:text-white bg-white/[0.04]'
+                        }`}
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        Publish Immediately (Now)
+                      </button>
+                    </div>
+
+                    {!publishNow ? (
+                      <div className="space-y-3">
+                        {/* Quick Presets */}
+                        <div>
+                          <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 block mb-1.5">
+                            Quick Peak IST Scheduling Presets
+                          </label>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => applyTimePreset('today_6pm')}
+                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-mono bg-white/[0.04] hover:bg-purple-600/20 text-zinc-300 hover:text-purple-200 border border-white/[0.08] hover:border-purple-500/30 transition-colors"
+                            >
+                              Today 6:00 PM
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => applyTimePreset('tmrw_10am')}
+                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-mono bg-white/[0.04] hover:bg-purple-600/20 text-zinc-300 hover:text-purple-200 border border-white/[0.08] hover:border-purple-500/30 transition-colors"
+                            >
+                              Tomorrow 10:00 AM
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => applyTimePreset('tmrw_6pm')}
+                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-mono bg-white/[0.04] hover:bg-purple-600/20 text-zinc-300 hover:text-purple-200 border border-white/[0.08] hover:border-purple-500/30 transition-colors"
+                            >
+                              Tomorrow 6:00 PM
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => applyTimePreset('in_2d_6pm')}
+                              className="px-2.5 py-1.5 rounded-lg text-[11px] font-mono bg-white/[0.04] hover:bg-purple-600/20 text-zinc-300 hover:text-purple-200 border border-white/[0.08] hover:border-purple-500/30 transition-colors"
+                            >
+                              +2 Days 6:00 PM
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Date & Time Picker + Channel Selector */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block mb-1">
+                              Custom Publish Date & Time
+                            </label>
+                            <input
+                              type="datetime-local"
+                              value={scheduledDateTime}
+                              onChange={(e) => setScheduledDateTime(e.target.value)}
+                              className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block mb-1">
+                              Destination YouTube Channel
+                            </label>
+                            <select
+                              value={selectedChannelId}
+                              onChange={(e) => handleAssignChannel(e.target.value)}
+                              className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                            >
+                              <option value="">Select YouTube Channel</option>
+                              {channels.map((ch) => (
+                                <option key={ch.id} value={ch.id}>
+                                  {ch.title} {ch.status === 'active' ? '✓' : '(Reconnect)'}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSchedule(false)}
+                          disabled={isScheduling || !selectedChannelId}
+                          className="w-full py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white transition-all shadow-md shadow-purple-500/20 flex items-center justify-center gap-2 disabled:opacity-40"
+                        >
+                          <Clock className="w-3.5 h-3.5" />
+                          {isScheduling ? 'Scheduling Upload...' : `Confirm Schedule for ${new Date(scheduledDateTime).toLocaleString('en-IN')}`}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="p-3 rounded-xl bg-red-950/20 border border-red-500/30 text-xs text-zinc-300 space-y-1">
+                          <p className="font-semibold text-red-300">⚡ Immediate YouTube Upload</p>
+                          <p className="text-[11px] text-zinc-400 font-mono">
+                            The 1080p master video, custom 16:9 thumbnail, chapter descriptions, and tags will be uploaded directly to your channel right now.
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block mb-1">
+                            Destination YouTube Channel
+                          </label>
+                          <select
+                            value={selectedChannelId}
+                            onChange={(e) => handleAssignChannel(e.target.value)}
+                            className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                          >
+                            <option value="">Select YouTube Channel</option>
+                            {channels.map((ch) => (
+                              <option key={ch.id} value={ch.id}>
+                                {ch.title} {ch.status === 'active' ? '✓' : '(Reconnect)'}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleSchedule(true)}
+                          disabled={isScheduling || !selectedChannelId}
+                          className="w-full py-2.5 rounded-xl font-bold text-xs bg-red-600 hover:bg-red-500 text-white transition-all shadow-md shadow-red-500/20 flex items-center justify-center gap-2 disabled:opacity-40"
+                        >
+                          <Youtube className="w-4 h-4" />
+                          {isScheduling ? 'Uploading to YouTube...' : 'Upload & Publish to YouTube Now'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Live Terminal Logs */}

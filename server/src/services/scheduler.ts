@@ -1,6 +1,8 @@
 import cron from 'node-cron';
-import { db, QueueRecord, ClipRecord } from '../db/index.js';
+import path from 'path';
+import { db, QueueRecord, ClipRecord, LongformProjectRecord, LongformChapter } from '../db/index.js';
 import { YouTubeService } from './youtube.js';
+import { CONFIG } from '../config.js';
 import { v4 as uuidv4 } from 'uuid';
 
 export class SchedulerService {
@@ -16,6 +18,7 @@ export class SchedulerService {
       this.isRunning = true;
       try {
         await this.processDuePosts();
+        await this.processDueLongformPosts();
       } catch (err: any) {
         console.error('Error in scheduler job:', err.message);
       } finally {
@@ -246,6 +249,92 @@ export class SchedulerService {
     })();
 
     return { scheduledCount };
+  }
+
+  /**
+   * Process all long-form projects currently due for publication
+   */
+  static async processDueLongformPosts() {
+    const nowIso = new Date().toISOString();
+
+    const dueLongform = db.prepare(`
+      SELECT *
+      FROM longform_projects
+      WHERE schedule_status = 'scheduled'
+        AND scheduled_time <= ?
+        AND video_path IS NOT NULL
+        AND assigned_channel_id IS NOT NULL
+      ORDER BY scheduled_time ASC
+      LIMIT 2
+    `).all(nowIso) as LongformProjectRecord[];
+
+    for (const proj of dueLongform) {
+      await this.uploadLongformProject(proj);
+    }
+  }
+
+  static async uploadLongformProject(proj: LongformProjectRecord) {
+    const now = new Date().toISOString();
+    db.prepare("UPDATE longform_projects SET schedule_status = 'posting', updated_at = ? WHERE id = ?")
+      .run(now, proj.id);
+
+    try {
+      const videoFullPath = path.isAbsolute(proj.video_path!)
+        ? proj.video_path!
+        : path.join(CONFIG.STORAGE_DIR, proj.video_path!);
+
+      const thumbFullPath = proj.thumbnail_path
+        ? (path.isAbsolute(proj.thumbnail_path) ? proj.thumbnail_path : path.join(CONFIG.STORAGE_DIR, proj.thumbnail_path))
+        : null;
+
+      // Generate description with timestamps from chapters
+      let chapters: LongformChapter[] = [];
+      try {
+        chapters = JSON.parse(proj.chapters || '[]');
+      } catch {}
+
+      let accumulatedSeconds = 0;
+      const timestampLines = chapters.map((ch) => {
+        const mins = Math.floor(accumulatedSeconds / 60);
+        const secs = Math.floor(accumulatedSeconds % 60);
+        const stamp = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        accumulatedSeconds += ch.duration;
+        return `${stamp} - ${ch.title}`;
+      });
+
+      const description = `${proj.title || proj.topic}\n\n${proj.script_outline || ''}\n\nTIMESTAMPS:\n${timestampLines.join('\n')}\n\n#GTA6 #GrandTheftAuto6 #Gaming`;
+
+      console.log(`🚀 Uploading Long-Form Video "${proj.title || proj.topic}" to YouTube channel ${proj.assigned_channel_id}...`);
+
+      const result = await YouTubeService.uploadLongformVideo({
+        channelId: proj.assigned_channel_id!,
+        videoPath: videoFullPath,
+        thumbnailPath: thumbFullPath,
+        title: proj.title || proj.topic,
+        description,
+        tags: ['GTA6', 'GrandTheftAuto6', 'RockstarGames', 'GTA6Leaks', 'Gaming']
+      });
+
+      db.prepare(`
+        UPDATE longform_projects
+        SET schedule_status = 'posted',
+            youtube_video_id = ?,
+            posted_at = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(result.videoId, new Date().toISOString(), new Date().toISOString(), proj.id);
+
+      console.log(`✅ Long-Form Video published successfully to YouTube: ${result.videoUrl}`);
+    } catch (err: any) {
+      console.error(`❌ Long-Form Video upload failed for project ${proj.id}:`, err.message);
+      db.prepare(`
+        UPDATE longform_projects
+        SET schedule_status = 'failed',
+            error_message = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(`Upload failed: ${err.message}`, new Date().toISOString(), proj.id);
+    }
   }
 }
 

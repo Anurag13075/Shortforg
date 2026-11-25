@@ -5,6 +5,7 @@ import fs from 'fs';
 import { CONFIG } from '../config.js';
 import { db, LongformProjectRecord, LongformChapter, ChannelRecord } from '../db/index.js';
 import { LongformPipelineService } from '../services/longformPipeline.js';
+import { SchedulerService } from '../services/scheduler.js';
 
 export const longformRouter = Router();
 
@@ -428,6 +429,116 @@ longformRouter.post('/:id/assign-channel', (req: Request, res: Response) => {
       .run(channel ? channel_id : null, new Date().toISOString(), projectId);
 
     res.json({ success: true, message: 'Channel assigned successfully' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/longform/:id/schedule - Schedule or immediately publish a long-form video to YouTube
+ */
+longformRouter.post('/:id/schedule', (req: Request, res: Response) => {
+  const { channel_id, scheduled_time, publish_now } = req.body;
+  const projectId = String(req.params.id);
+
+  if (!channel_id) {
+    return res.status(400).json({ success: false, error: 'Target YouTube channel_id is required' });
+  }
+
+  const project = db.prepare('SELECT * FROM longform_projects WHERE id = ?').get(projectId) as LongformProjectRecord | undefined;
+  if (!project) {
+    return res.status(404).json({ success: false, error: 'Project not found' });
+  }
+
+  if (project.status !== 'completed' || !project.video_path) {
+    return res.status(400).json({ success: false, error: 'Video is still processing or missing. Only completed videos can be scheduled.' });
+  }
+
+  const channel = db.prepare('SELECT * FROM channels WHERE id = ?').get(channel_id) as ChannelRecord | undefined;
+  if (!channel) {
+    return res.status(404).json({ success: false, error: 'YouTube channel not found in database' });
+  }
+
+  try {
+    const now = new Date().toISOString();
+    let targetTime = scheduled_time;
+
+    if (publish_now) {
+      targetTime = now;
+    } else if (!targetTime) {
+      // Default to tomorrow 6:00 PM IST
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(18, 0, 0, 0);
+      targetTime = tomorrow.toISOString();
+    }
+
+    db.prepare(`
+      UPDATE longform_projects
+      SET assigned_channel_id = ?,
+          scheduled_time = ?,
+          schedule_status = 'scheduled',
+          updated_at = ?
+      WHERE id = ?
+    `).run(channel_id, targetTime, now, projectId);
+
+    if (publish_now) {
+      setImmediate(() => {
+        SchedulerService.processDueLongformPosts().catch((err) => {
+          console.error(`Immediate publish failed for longform project ${projectId}:`, err);
+        });
+      });
+    }
+
+    const updated = db.prepare(`
+      SELECT p.*, ch.title as channel_title, ch.avatar_url as channel_avatar
+      FROM longform_projects p
+      LEFT JOIN channels ch ON p.assigned_channel_id = ch.id
+      WHERE p.id = ?
+    `).get(projectId) as any;
+
+    res.json({
+      success: true,
+      data: updated,
+      message: publish_now ? 'Video upload started immediately!' : `Scheduled for ${new Date(targetTime).toLocaleString('en-IN')}`
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/longform/:id/cancel-schedule - Cancel a scheduled upload
+ */
+longformRouter.post('/:id/cancel-schedule', (req: Request, res: Response) => {
+  const projectId = String(req.params.id);
+
+  try {
+    const project = db.prepare('SELECT * FROM longform_projects WHERE id = ?').get(projectId) as LongformProjectRecord | undefined;
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' });
+    }
+
+    if (project.schedule_status === 'posting') {
+      return res.status(400).json({ success: false, error: 'Upload is already in progress and cannot be cancelled.' });
+    }
+
+    db.prepare(`
+      UPDATE longform_projects
+      SET schedule_status = 'none',
+          scheduled_time = NULL,
+          updated_at = ?
+      WHERE id = ?
+    `).run(new Date().toISOString(), projectId);
+
+    const updated = db.prepare(`
+      SELECT p.*, ch.title as channel_title, ch.avatar_url as channel_avatar
+      FROM longform_projects p
+      LEFT JOIN channels ch ON p.assigned_channel_id = ch.id
+      WHERE p.id = ?
+    `).get(projectId) as any;
+
+    res.json({ success: true, data: updated, message: 'Scheduled upload cancelled' });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }

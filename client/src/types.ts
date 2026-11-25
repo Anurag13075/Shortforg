@@ -152,6 +152,10 @@ export interface LongformProject {
   assigned_channel_id: string | null;
   channel_title?: string;
   channel_avatar?: string;
+  scheduled_time?: string | null;
+  schedule_status?: 'none' | 'scheduled' | 'posting' | 'posted' | 'failed';
+  youtube_video_id?: string | null;
+  posted_at?: string | null;
   created_at: string;
   updated_at: string;
 }

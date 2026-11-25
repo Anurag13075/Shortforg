@@ -242,4 +242,82 @@ export class YouTubeService {
       videoUrl: `https://youtube.com/shorts/${videoId}`
     };
   }
+
+  /**
+   * Upload 16:9 widescreen Long-Form video with description chapters and custom 16:9 thumbnail
+   */
+  static async uploadLongformVideo(params: {
+    channelId: string;
+    videoPath: string;
+    thumbnailPath?: string | null;
+    title: string;
+    description: string;
+    tags?: string[] | null;
+  }): Promise<{ videoId: string; videoUrl: string }> {
+    const { channelId, videoPath, thumbnailPath, title, description, tags } = params;
+
+    if (!fs.existsSync(videoPath)) {
+      throw new Error(`Video file not found at: ${videoPath}`);
+    }
+
+    const auth = await this.getAuthenticatedClient(channelId);
+    const youtube = google.youtube({ version: 'v3', auth });
+
+    const finalTags = Array.isArray(tags) && tags.length > 0
+      ? tags.map((t) => t.replace(/^#/, ''))
+      : ['GTA6', 'GrandTheftAuto6', 'Gaming', 'RockstarGames', 'GTA6Leaks'];
+
+    const videoFileSize = fs.statSync(videoPath).size;
+
+    // Upload Video
+    const res: any = await (youtube.videos.insert as any)(
+      {
+        part: ['snippet', 'status'],
+        requestBody: {
+          snippet: {
+            title: title.substring(0, 100),
+            description: description || title,
+            tags: finalTags,
+            categoryId: '20' // 20 = Gaming
+          },
+          status: {
+            privacyStatus: 'public',
+            selfDeclaredMadeForKids: false
+          }
+        },
+        media: {
+          body: fs.createReadStream(videoPath)
+        }
+      },
+      {
+        maxBodyLength: videoFileSize + 1024 * 1024 * 25,
+        maxContentLength: videoFileSize + 1024 * 1024 * 25
+      }
+    );
+
+    const videoId = res.data.id;
+    if (!videoId) {
+      throw new Error('YouTube API did not return a video ID upon long-form upload.');
+    }
+
+    // Upload Custom 16:9 Thumbnail if provided
+    if (thumbnailPath && fs.existsSync(thumbnailPath)) {
+      try {
+        await youtube.thumbnails.set({
+          videoId,
+          media: {
+            mimeType: 'image/jpeg',
+            body: fs.createReadStream(thumbnailPath)
+          }
+        });
+      } catch (thumbErr: any) {
+        console.warn(`Could not upload custom thumbnail for long-form video ${videoId}: ${thumbErr.message}`);
+      }
+    }
+
+    return {
+      videoId,
+      videoUrl: `https://youtube.com/watch?v=${videoId}`
+    };
+  }
 }

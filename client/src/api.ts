@@ -475,6 +475,17 @@ export const api = {
       body: JSON.stringify({ channel_id })
     }),
 
+  scheduleLongformProject: (id: string, channelId: string, scheduledTime?: string, publishNow: boolean = false) =>
+    request<{ success: boolean; data: LongformProject; message: string }>(`/api/longform/${id}/schedule`, {
+      method: 'POST',
+      body: JSON.stringify({ channel_id: channelId, scheduled_time: scheduledTime, publish_now: publishNow })
+    }),
+
+  cancelLongformSchedule: (id: string) =>
+    request<{ success: boolean; data: LongformProject; message: string }>(`/api/longform/${id}/cancel-schedule`, {
+      method: 'POST'
+    }),
+
   getLongformVideoUrl: (id: string) => `/api/longform/${id}/video`,
   getLongformThumbnailUrl: (id: string) => `/api/longform/${id}/thumbnail`,
   getLongformDownloadUrl: (id: string) => `/api/longform/${id}/download`,

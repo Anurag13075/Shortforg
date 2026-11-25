@@ -237,6 +237,18 @@ export function initDatabase() {
   try {
     db.exec("ALTER TABLE projects ADD COLUMN niche TEXT DEFAULT 'high_energy';");
   } catch {}
+  try {
+    db.exec("ALTER TABLE longform_projects ADD COLUMN scheduled_time TEXT;");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE longform_projects ADD COLUMN schedule_status TEXT DEFAULT 'none';");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE longform_projects ADD COLUMN youtube_video_id TEXT;");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE longform_projects ADD COLUMN posted_at TEXT;");
+  } catch {}
 }
 
 export interface ProjectRecord {
@@ -340,6 +352,10 @@ export interface LongformProjectRecord {
   video_path: string | null;
   thumbnail_path: string | null;
   assigned_channel_id: string | null;
+  scheduled_time?: string | null;
+  schedule_status?: 'none' | 'scheduled' | 'posting' | 'posted' | 'failed';
+  youtube_video_id?: string | null;
+  posted_at?: string | null;
   created_at: string;
   updated_at: string;
 }
