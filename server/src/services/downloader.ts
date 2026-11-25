@@ -421,6 +421,7 @@ export async function downloadYouTubeVideo(
       ];
 
   let lastYtDlpError: string = '';
+  let firstCookieError: string = '';
 
   for (const attempt of clientAttempts) {
     try {
@@ -428,8 +429,13 @@ export async function downloadYouTubeVideo(
       onProgress?.(12, `Attempting YouTube stream extraction (${attempt.client} / ${modeTag})...`);
       return await runYtDlpWithClient(ytDlpCmd, youtubeUrl, outputDir, attempt.client, onProgress, attempt.useCookies);
     } catch (err: any) {
-      console.warn(`yt-dlp with client ${attempt.client} (cookies=${attempt.useCookies}) failed:`, err.message);
-      lastYtDlpError = err.message;
+      const shortErr = (err.message || '').replace(/\s+/g, ' ').slice(0, 220);
+      console.warn(`yt-dlp with client ${attempt.client} (cookies=${attempt.useCookies}) failed:`, shortErr);
+      onProgress?.(12, `⚠️ ${attempt.client} (${attempt.useCookies ? 'cookie-auth' : 'cookieless'}) failed: ${shortErr}`);
+      if (attempt.useCookies && !firstCookieError) {
+        firstCookieError = shortErr;
+      }
+      lastYtDlpError = shortErr;
     }
   }
 
@@ -438,6 +444,7 @@ export async function downloadYouTubeVideo(
     return await downloadWithCobalt(youtubeUrl, outputDir, onProgress);
   } catch (cobaltErr: any) {
     console.warn('Cobalt stream fallback failed:', cobaltErr.message);
+    onProgress?.(15, `⚠️ Cobalt fallback failed: ${cobaltErr.message}`);
   }
 
   // 4. VidKraken Fallback (if configured)
@@ -446,8 +453,10 @@ export async function downloadYouTubeVideo(
       return await downloadWithVidKraken(youtubeUrl, outputDir, CONFIG.VIDKRAKEN_API_KEY, onProgress);
     } catch (vkError: any) {
       console.warn('VidKraken fallback failed:', vkError.message);
+      onProgress?.(15, `⚠️ VidKraken fallback failed: ${vkError.message}`);
     }
   }
 
-  throw new Error(`Download engine could not fetch video: ${lastYtDlpError || 'YouTube blocked cloud datacenter IP'}. Tip: Export cookies using YouTube Cookie Vault or switch to the "Upload Video File" tab above to process your video directly without YouTube bot challenges.`);
+  const primaryErr = firstCookieError || lastYtDlpError || 'YouTube blocked cloud datacenter IP';
+  throw new Error(`Download engine could not fetch video: ${primaryErr}. Tip: Export fresh YouTube cookies (logged-in) in YouTube Cookie Vault or switch to "Upload Video File".`);
 }
