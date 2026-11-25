@@ -98,9 +98,7 @@ longformRouter.post('/sync', (req: Request, res: Response) => {
 longformRouter.post('/', (req: Request, res: Response) => {
   const { topic, sourceUrls, targetDuration } = req.body;
 
-  if (!topic || typeof topic !== 'string' || !topic.trim()) {
-    return res.status(400).json({ success: false, error: 'Topic / title angle is required' });
-  }
+  const cleanTopic = typeof topic === 'string' && topic.trim() ? topic.trim() : 'Auto-Synthesized Documentary';
 
   if (!Array.isArray(sourceUrls) || sourceUrls.length === 0) {
     return res.status(400).json({ success: false, error: 'At least 1-2 source video URLs are required' });
@@ -124,7 +122,7 @@ longformRouter.post('/', (req: Request, res: Response) => {
         id, topic, title, source_urls, target_duration, actual_duration,
         status, progress, stage_message, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, 0, 'pending', 0, 'Project created. Initializing Long-Form Studio Engine...', ?, ?)
-    `).run(projectId, topic.trim(), topic.trim(), JSON.stringify(cleanUrls), durationSec, now, now);
+    `).run(projectId, cleanTopic, cleanTopic, JSON.stringify(cleanUrls), durationSec, now, now);
 
     // Launch background pipeline
     setImmediate(() => {

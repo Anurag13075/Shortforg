@@ -273,12 +273,12 @@ export class LongformPipelineService {
 
       this.addLog(projectId, 'success', `🎬 AI Director created ${chapters.length} cohesive chapters: "${generatedTitle}"`);
 
-      // Update DB with generated script outline and chapters
+      // Update DB with generated script outline, auto-discovered topic/title, and chapters
       db.prepare(`
         UPDATE longform_projects
-        SET title = ?, chapters = ?, script_outline = ?, updated_at = ?
+        SET title = ?, topic = ?, chapters = ?, script_outline = ?, updated_at = ?
         WHERE id = ?
-      `).run(generatedTitle, JSON.stringify(chapters), scriptOutline, new Date().toISOString(), projectId);
+      `).run(generatedTitle, generatedTitle, JSON.stringify(chapters), scriptOutline, new Date().toISOString(), projectId);
 
       // ----------------------------------------------------------------------
       // STEP 4: RENDER CHAPTER SEGMENTS (1080p 16:9 + Lower Third Title Cards)
@@ -399,48 +399,55 @@ Sampled Timeline Excerpts:
 ${sampledQuotes.slice(0, 12).join('\n')}`;
     }).join('\n\n');
 
-    const systemPrompt = `You are an award-winning YouTube Documentary Director and Gaming Video Essayist specializing in viral GTA 6 deep-dives, leaked features, map comparisons, and narrative secrets.
-Your goal is to build an extraordinary, cohesive 8-12 minute video essay by stitching together the most captivating segments from multiple source videos.
+    const isAutoTopic = !topic || topic === 'Auto-Synthesized Documentary';
+
+    const systemPrompt = `You are an award-winning YouTube Documentary Director and Master Storyteller.
+Your job is to analyze multiple YouTube source videos (which may cover different scenes, angles, or even random topics) and weave their best moments into ONE seamless, cohesive, high-retention long-form video that NEVER loses its track from start to end.
 
 CRITICAL DIRECTING PRINCIPLES:
-1. NARRATIVE PROGRESSION (NOT A RANDOM COMPILATION):
-   - Chapter 1: The Explosive Hook / Mystery (opens with an immediate shocking fact, leak, or revelation)
-   - Chapters 2-4: Deep dive into the evidence, mechanics, comparisons, and hidden details
-   - Chapters 5-7: High-stakes theories, community reactions, developer clues, and game-changing implications
-   - Final Chapter: Ultimate conclusion and forward-looking takeaway that leaves viewers stunned.
-2. SOURCE ATTRIBUTION & FAIR USE TRANSFORMATION:
-   - Extract segments between 45 and 90 seconds each from the source videos.
-   - Jump between the sources naturally to tell a cohesive story.
-   - Return 6 to 9 chapters.
-3. ACCURATE TIMESTAMPS:
-   - "start_time" and "end_time" must be in seconds within the source video's total duration.
+1. AUTO-DISCOVER THE UNIFYING STORY (EVEN FROM DIFFERENT VIDEOS):
+   ${isAutoTopic
+     ? '- The user did NOT specify a topic. Analyze ALL source transcripts and titles, discover the most exciting unifying theme or overarching narrative thread that connects them all, and invent a viral, curiosity-driven YouTube Title for it.'
+     : `- Unify all source videos around this core angle: "${topic}".`}
+2. 5-ACT NARRATIVE STRUCTURE (NO RANDOM JUMPS — SEAMLESS FLOW START TO END):
+   - Chapter 1 (Cold Open / Explosive Hook): 25-45s. Opens with the single most shocking, high-energy revelation across ALL videos.
+   - Chapters 2-3 (Act 1 — Setup & Context): Establishes the core mystery/subject and bridges the first sources smoothly.
+   - Chapters 4-6 (Act 2 — Escalation & Deep Dive): Builds momentum with deeper evidence, comparisons, or gameplay/story twists so each chapter naturally leads into the next.
+   - Chapters 7-8 (Act 3 — Climax / Biggest Reveal): The highest-stakes moment or twist across the sources.
+   - Final Chapter (Grand Takeaway): Ties every thread together for a clean, satisfying ending.
+3. USE EVERY SOURCE & KEEP COHESION:
+   - Include segments from EVERY available source video (0 to ${sources.length - 1}) so nothing the user provided is wasted.
+   - Target total duration around ${Math.round(targetDurationSeconds / 60)} minutes (${targetDurationSeconds}s) by creating 7 to 10 chapters of 45 to 95 seconds each.
+   - Every chapter's "summary" should explain how it connects smoothly from the previous chapter to the next.
+4. ACCURATE TIMESTAMPS:
+   - "start_time" and "end_time" must be in seconds within that source video's total duration.
    - "source_index" must match the 0-based source video index.
-4. TITLE & HOOKS:
-   - Main Title: High-CTR, curiosity gap, under 70 characters (e.g., "GTA 6: The Secret Details Rockstar Doesn't Want You To See").
-   - Each chapter must have a punchy 2-4 word "hook_text" displayed on-screen (e.g. "LEAKED MAP CONFIRMED", "INSANE GRAPHICS PHYSICS").
+5. TITLE & ON-SCREEN HOOKS:
+   - Main Title: High-CTR, under 70 characters, no clickbait clichés unless grounded in the videos.
+   - Each chapter must have a punchy 2-4 word "hook_text" displayed on-screen.
 
 OUTPUT FORMAT: Return STRICT JSON ONLY:
 {
-  "title": "GTA 6: The Full Map & Leak Breakdown They Tried To Hide",
-  "script_outline": "A full narrative summary connecting the chapters...",
+  "title": "Your Compelling Unified YouTube Title",
+  "script_outline": "A cohesive narrative roadmap explaining how all chapters flow from start to end...",
   "chapters": [
     {
-      "title": "Chapter 1: The Vice City Horizon & Map Scale",
+      "title": "Chapter 1: ...",
       "source_index": 0,
       "start_time": 25.0,
       "end_time": 85.0,
-      "hook_text": "LEAKED MAP SCALE",
-      "summary": "Reveals the jaw-dropping scale of the new Vice City coastline compared to Los Santos."
+      "hook_text": "SHORT PUNCHY HOOK",
+      "summary": "How this chapter hooks the viewer and leads into Chapter 2."
     }
   ]
 }`;
 
-    const userPrompt = `TOPIC / GOAL: "${topic}"
+    const userPrompt = `${isAutoTopic ? 'MODE: AUTO-ANALYZE & UNIFY ALL VIDEOS (No preset topic given — discover the best unifying story!)' : `TOPIC / GOAL: "${topic}"`}
 TARGET DURATION: ${targetDurationSeconds} seconds (~${Math.round(targetDurationSeconds / 60)} minutes)
-AVAILABLE SOURCE VIDEOS:
+AVAILABLE SOURCE VIDEOS (${sources.length} total):
 ${sourcesSummary}
 
-Synthesize a complete 6-9 chapter narrative video essay in valid JSON format.`;
+Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohesive video in valid JSON format.`;
 
     const candidateModels = [
       'qwen/qwen3.8-27b',

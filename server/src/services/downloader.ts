@@ -87,7 +87,8 @@ async function runYtDlpWithClient(
   youtubeUrl: string,
   outputDir: string,
   playerClient: string,
-  onProgress?: (progressPercent: number, message: string) => void
+  onProgress?: (progressPercent: number, message: string) => void,
+  useCookies: boolean = true
 ): Promise<DownloadResult> {
   const timestamp = Date.now();
   const outputTemplate = path.join(outputDir, `source_${timestamp}_%(title).40s.%(ext)s`);
@@ -103,19 +104,20 @@ async function runYtDlpWithClient(
 
     const localCookies = path.resolve(process.cwd(), 'cookies.txt');
     const relativeCookies = path.join(outputDir, '../cookies.txt');
-    const activeCookies = fs.existsSync(cookiesStoragePath)
-      ? cookiesStoragePath
-      : (fs.existsSync(relativeCookies) ? relativeCookies : (fs.existsSync(localCookies) ? localCookies : null));
+    const activeCookies = useCookies
+      ? (fs.existsSync(cookiesStoragePath)
+          ? cookiesStoragePath
+          : (fs.existsSync(relativeCookies) ? relativeCookies : (fs.existsSync(localCookies) ? localCookies : null)))
+      : null;
 
     const args = [
-      '--js-runtimes', 'node',
+      '--js-runtimes', `node:${process.execPath}`,
       '--remote-components', 'ejs:github',
-      '-f', 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b/best',
+      '-f', 'bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b[ext=mp4]/b/best',
       '--merge-output-format', 'mp4',
       '--extractor-args', `youtube:player_client=${playerClient}`,
       '--no-playlist',
       '--no-check-certificates',
-      '--prefer-free-formats',
       '--add-header', 'Accept-Language:en-US,en;q=0.9',
       '--print', 'after_move:filepath',
       '--print', 'after_move:title',
@@ -152,16 +154,16 @@ async function runYtDlpWithClient(
     child.on('close', (code) => {
       if (code === 0) {
         const lines = stdout.trim().split('\n').map((l) => l.trim()).filter(Boolean);
-        let filePath = lines.find((l) => l.endsWith('.mp4'));
+        let filePath = lines.find((l) => /\.(mp4|mkv|webm)$/i.test(l));
         if (!filePath || !fs.existsSync(filePath)) {
-          const files = fs.readdirSync(outputDir).filter((f) => f.includes(`source_${timestamp}`) && f.endsWith('.mp4'));
+          const files = fs.readdirSync(outputDir).filter((f) => f.includes(`source_${timestamp}`) && /\.(mp4|mkv|webm)$/i.test(f));
           if (files.length > 0) {
             filePath = path.join(outputDir, files[0]);
           }
         }
 
         if (filePath && fs.existsSync(filePath)) {
-          const title = lines[1] || path.basename(filePath, '.mp4').replace(`source_${timestamp}_`, '');
+          const title = lines[1] || path.basename(filePath).replace(`source_${timestamp}_`, '').replace(/\.[^.]+$/, '');
           const duration = parseFloat(lines[2] || '0');
           onProgress?.(60, 'Video downloaded successfully!');
           return resolve({ filePath, title, duration });
@@ -398,18 +400,35 @@ export async function downloadYouTubeVideo(
   const cookiesStoragePath = path.join(CONFIG.STORAGE_DIR, 'cookies.txt');
   const hasCookies = fs.existsSync(cookiesStoragePath) && fs.statSync(cookiesStoragePath).size > 50;
 
-  // When cookies are present, web and tv_samsung clients match the exported cookie jar best
-  const clientsToTry = hasCookies
-    ? ['web', 'tv_samsung,web', 'mweb', 'android,web']
-    : ['android,web', 'tv_samsung', 'ios', 'android', 'web'];
+  // Try cookie-authenticated clients first if cookies exist, then ALWAYS fall back to cookieless mobile/TV clients
+  // (stale or bot-flagged web cookies often cause YouTube to return "Only images are available")
+  const clientAttempts: Array<{ client: string; useCookies: boolean }> = hasCookies
+    ? [
+        { client: 'web', useCookies: true },
+        { client: 'tv_simply,web', useCookies: true },
+        { client: 'mweb', useCookies: true },
+        { client: 'ios', useCookies: false },
+        { client: 'android', useCookies: false },
+        { client: 'tv_simply', useCookies: false },
+        { client: 'android_vr', useCookies: false }
+      ]
+    : [
+        { client: 'ios', useCookies: false },
+        { client: 'android', useCookies: false },
+        { client: 'tv_simply', useCookies: false },
+        { client: 'android_vr', useCookies: false },
+        { client: 'web', useCookies: false }
+      ];
+
   let lastYtDlpError: string = '';
 
-  for (const client of clientsToTry) {
+  for (const attempt of clientAttempts) {
     try {
-      onProgress?.(12, `Attempting YouTube stream extraction (${client} engine)...`);
-      return await runYtDlpWithClient(ytDlpCmd, youtubeUrl, outputDir, client, onProgress);
+      const modeTag = attempt.useCookies ? 'cookie-auth' : 'cookieless';
+      onProgress?.(12, `Attempting YouTube stream extraction (${attempt.client} / ${modeTag})...`);
+      return await runYtDlpWithClient(ytDlpCmd, youtubeUrl, outputDir, attempt.client, onProgress, attempt.useCookies);
     } catch (err: any) {
-      console.warn(`yt-dlp with client ${client} failed:`, err.message);
+      console.warn(`yt-dlp with client ${attempt.client} (cookies=${attempt.useCookies}) failed:`, err.message);
       lastYtDlpError = err.message;
     }
   }

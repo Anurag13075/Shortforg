@@ -1,7 +1,10 @@
 import cron from 'node-cron';
 import path from 'path';
-import { db, QueueRecord, ClipRecord, LongformProjectRecord, LongformChapter } from '../db/index.js';
+import fs from 'fs';
+import { db, QueueRecord, ClipRecord, ProjectRecord, LongformProjectRecord, LongformChapter } from '../db/index.js';
 import { YouTubeService } from './youtube.js';
+import { downloadYouTubeVideo } from './downloader.js';
+import { PipelineService } from './pipeline.js';
 import { CONFIG } from '../config.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -82,12 +85,51 @@ export class SchedulerService {
         }
       }
 
+      let videoPath = item.video_path;
+      let thumbnailPath = item.thumbnail_path;
+
+      // Auto-recover clip file if wiped by container restart/redeploy
+      if (!videoPath || !fs.existsSync(videoPath)) {
+        console.warn(`⚠️ Scheduled Short "${item.clip_title}" file missing on disk (${videoPath}). Attempting auto-recovery...`);
+        const clip = db.prepare('SELECT * FROM clips WHERE id = ?').get(item.clip_id) as ClipRecord | undefined;
+        const project = clip ? (db.prepare('SELECT * FROM projects WHERE id = ?').get(clip.project_id) as ProjectRecord | undefined) : undefined;
+
+        if (!clip || !project) {
+          throw new Error('Clip or parent project not found in database.');
+        }
+
+        const projectDir = path.join(CONFIG.STORAGE_DIR, project.id);
+        if (!fs.existsSync(projectDir)) {
+          fs.mkdirSync(projectDir, { recursive: true });
+        }
+
+        // Re-download source video if also missing
+        if (!project.source_video_path || !fs.existsSync(project.source_video_path)) {
+          if (!project.youtube_url || project.youtube_url.startsWith('file://')) {
+            throw new Error('Uploaded source video was lost on server restart. Please re-upload the video.');
+          }
+          console.log(`📥 Re-downloading source video for project "${project.title || project.id}" to recover scheduled Short...`);
+          const dl = await downloadYouTubeVideo(project.youtube_url, projectDir);
+          db.prepare('UPDATE projects SET source_video_path = ?, updated_at = ? WHERE id = ?')
+            .run(dl.filePath, new Date().toISOString(), project.id);
+        }
+
+        // Re-render the clip & thumbnail
+        console.log(`🎬 Re-rendering scheduled Short "${clip.title}"...`);
+        const recoveredClip = await PipelineService.reRenderClip(clip.id);
+        if (!recoveredClip.video_path || !fs.existsSync(recoveredClip.video_path)) {
+          throw new Error('Auto-recovery re-render did not produce a valid video file.');
+        }
+        videoPath = recoveredClip.video_path;
+        thumbnailPath = recoveredClip.thumbnail_path;
+      }
+
       console.log(`🚀 Uploading Short "${item.clip_title}" to YouTube channel ${item.channel_id}...`);
 
       const result = await YouTubeService.uploadShort({
         channelId: item.channel_id,
-        videoPath: item.video_path,
-        thumbnailPath: item.thumbnail_path,
+        videoPath,
+        thumbnailPath,
         title: item.clip_title,
         caption: item.caption,
         hashtags: parsedHashtags
@@ -99,6 +141,7 @@ export class SchedulerService {
         SET status = 'posted',
             youtube_video_id = ?,
             posted_at = ?,
+            error_message = NULL,
             updated_at = ?
         WHERE id = ?
       `).run(result.videoId, new Date().toISOString(), new Date().toISOString(), item.id);
@@ -109,8 +152,10 @@ export class SchedulerService {
       const errorMsg = err.message || 'Unknown upload failure';
       console.error(`❌ Upload failed for queue item ${item.id} (Attempt ${newRetryCount}/3): ${errorMsg}`);
 
-      if (newRetryCount >= 3) {
-        // Exceeded retries, mark as failed
+      const isPermanent = /Reconnect needed|invalid_grant|Uploaded source video was lost|not found in database/i.test(errorMsg);
+
+      if (isPermanent || newRetryCount >= 3) {
+        // Exceeded retries or permanent error, mark as failed
         db.prepare(`
           UPDATE schedule_queue
           SET status = 'failed',

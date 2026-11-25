@@ -213,11 +213,6 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!topic.trim()) {
-      onToast('Please enter a video topic or concept angle', 'error');
-      return;
-    }
-
     const cleanUrls = sourceUrls.map((u) => u.trim()).filter((u) => u.length > 0);
     if (cleanUrls.length === 0) {
       onToast('Please enter at least 1 valid YouTube URL', 'error');
@@ -1148,7 +1143,7 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                   Synthesize New Long-Form Video
                 </h2>
                 <p className="text-xs text-zinc-400 mt-1">
-                  Enter 2 to 5 YouTube URLs and a topic concept. Our autonomous documentary engine downloads, transcribes, structures a compelling story arc, and renders a 1080p 16:9 master video.
+                  Just paste 2 to 5 YouTube URLs (even from different videos). Our AI automatically analyzes all transcripts, finds the best unifying story arc, and stitches them into one cohesive 1080p video from start to end.
                 </p>
               </div>
 
@@ -1175,13 +1170,13 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                 {/* Topic Input */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
-                    Video Topic / Narrative Concept <span className="text-red-400">*</span>
+                    Video Topic / Angle <span className="text-zinc-500">(Optional — leave blank for AI Auto-Discovery)</span>
                   </label>
                   <input
                     type="text"
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
-                    placeholder="e.g. GTA 6: The Full Map & Vice City Secrets Rockstar Doesn't Want You To See"
+                    placeholder="Leave blank to let AI auto-analyze your videos and invent the best unified story..."
                     className="w-full bg-black/40 border border-white/[0.08] rounded-xl px-4 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 transition-colors"
                   />
                 </div>
