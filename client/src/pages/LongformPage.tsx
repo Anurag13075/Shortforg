@@ -33,30 +33,18 @@ interface LongformPageProps {
   onToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
-// Quick GTA 6 Presets for instant viral video synthesis
+// Quick GTA 6 Topic & Duration Presets (user pastes their own real YouTube URLs)
 const GTA6_PRESETS = [
   {
     title: 'GTA 6: The Secret Map & Real-World Scale Details',
-    sources: [
-      'https://www.youtube.com/watch?v=QdBZY2fkU-0',
-      'https://www.youtube.com/watch?v=VRPx_YwW_qM'
-    ],
     duration: 600
   },
   {
     title: 'GTA 6: Insane Graphics Physics & AI Secrets Revealed',
-    sources: [
-      'https://www.youtube.com/watch?v=vq2L3R2wY7k',
-      'https://www.youtube.com/watch?v=7b7_Z3R7yXo'
-    ],
     duration: 600
   },
   {
     title: 'GTA 6: 15 Things You NEED TO DO on Day 1 (Full Guide)',
-    sources: [
-      'https://www.youtube.com/watch?v=8kY2L9_wZmY',
-      'https://www.youtube.com/watch?v=X2kL8_mPqZ0'
-    ],
     duration: 720
   }
 ];
@@ -206,9 +194,8 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
 
   const handleApplyPreset = (preset: typeof GTA6_PRESETS[0]) => {
     setTopic(preset.title);
-    setSourceUrls([...preset.sources]);
     setTargetDuration(preset.duration);
-    onToast(`Loaded preset: "${preset.title}"`, 'success');
+    onToast(`Loaded preset: "${preset.title}" — now paste your YouTube URLs below`, 'success');
   };
 
   const handleCreateProject = async (e: React.FormEvent) => {
