@@ -18,52 +18,71 @@ let cachedYtDlpPath: string | null = null;
 let ytdlpUpdatePromise: Promise<void> | null = null;
 export let lastYtdlpUpdateStatus: string = 'not_run';
 
-export function getPyLibsDir(): string {
-  return path.join(CONFIG.DATA_DIR, 'pylibs');
+export function getLocalYtDlpZipAppPath(): string {
+  return path.join(CONFIG.DATA_DIR, 'yt-dlp');
 }
 
 export function getYtDlpEnv(): NodeJS.ProcessEnv {
-  const pyLibs = getPyLibsDir();
-  if (fs.existsSync(pyLibs)) {
-    return {
-      ...process.env,
-      PYTHONPATH: process.env.PYTHONPATH ? `${pyLibs}${path.delimiter}${process.env.PYTHONPATH}` : pyLibs
-    };
-  }
   return process.env;
 }
 
 /**
- * Automatically installs/upgrades yt-dlp and yt-dlp-ejs into a writable DATA_DIR/pylibs
- * folder on container boot so we never get stuck on an outdated cached runtime version.
+ * Automatically downloads the latest official yt-dlp Python zipapp from GitHub Releases
+ * into DATA_DIR/yt-dlp (zero pip/root required, bundles latest yt-dlp + yt-dlp-ejs).
  */
 export function ensureLatestYtDlp(): Promise<void> {
   if (ytdlpUpdatePromise) return ytdlpUpdatePromise;
 
   ytdlpUpdatePromise = (async () => {
     try {
-      const pyLibs = getPyLibsDir();
-      if (!fs.existsSync(pyLibs)) {
-        fs.mkdirSync(pyLibs, { recursive: true });
+      const zipAppPath = getLocalYtDlpZipAppPath();
+      const dir = path.dirname(zipAppPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
       }
-      const env = getYtDlpEnv();
-      const currentVer = execSync('python3 -m yt_dlp --version', { stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000, env }).toString().trim();
-      if (currentVer < '2026.10') {
-        console.log(`⬆️ Outdated yt-dlp (${currentVer}) detected. Installing latest yt-dlp & yt-dlp-ejs into ${pyLibs}...`);
-        execSync(`python3 -m pip install --no-cache-dir --break-system-packages --upgrade --target "${pyLibs}" yt-dlp yt-dlp-ejs`, {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          timeout: 90000
+
+      let needsDownload = !fs.existsSync(zipAppPath);
+      if (!needsDownload) {
+        try {
+          const ver = execSync(`python3 "${zipAppPath}" --version`, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000 }).toString().trim();
+          const stat = fs.statSync(zipAppPath);
+          const ageHours = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60);
+          if (ver < '2026.10' || ageHours > 24) {
+            needsDownload = true;
+          } else {
+            lastYtdlpUpdateStatus = `up_to_date (${ver})`;
+          }
+        } catch {
+          needsDownload = true;
+        }
+      }
+
+      if (needsDownload) {
+        console.log(`⬇️ Downloading latest official yt-dlp release to ${zipAppPath}...`);
+        const tmpPath = `${zipAppPath}.tmp`;
+        const response = await axios({
+          method: 'GET',
+          url: 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp',
+          responseType: 'stream',
+          timeout: 60000,
+          maxRedirects: 10
         });
-        const newVer = execSync('python3 -m yt_dlp --version', { stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000, env: getYtDlpEnv() }).toString().trim();
-        lastYtdlpUpdateStatus = `upgraded ${currentVer} -> ${newVer}`;
-        console.log(`✅ yt-dlp upgraded to ${newVer}`);
-      } else {
-        lastYtdlpUpdateStatus = `up_to_date (${currentVer})`;
-        console.log(`✅ yt-dlp is up to date (${currentVer})`);
+        const writer = fs.createWriteStream(tmpPath);
+        await new Promise<void>((resolve, reject) => {
+          response.data.pipe(writer);
+          writer.on('finish', () => resolve());
+          writer.on('error', reject);
+        });
+        fs.chmodSync(tmpPath, 0o755);
+        fs.renameSync(tmpPath, zipAppPath);
+        const newVer = execSync(`python3 "${zipAppPath}" --version`, { stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000 }).toString().trim();
+        cachedYtDlpPath = `python3 ${zipAppPath}`;
+        lastYtdlpUpdateStatus = `downloaded (${newVer})`;
+        console.log(`✅ Latest yt-dlp ready: ${newVer}`);
       }
     } catch (err: any) {
       lastYtdlpUpdateStatus = `failed: ${err.message}`;
-      console.warn('yt-dlp auto-upgrade skipped/failed:', err.message);
+      console.warn('yt-dlp auto-download failed:', err.message);
     }
   })();
 
@@ -94,6 +113,13 @@ function isValidYtDlpCommand(cmd: string): boolean {
  */
 export async function ensureYtDlpBinary(): Promise<string> {
   if (cachedYtDlpPath && isValidYtDlpCommand(cachedYtDlpPath)) {
+    return cachedYtDlpPath;
+  }
+
+  // 0. Check our auto-updated DATA_DIR/yt-dlp zipapp first
+  const zipAppPath = getLocalYtDlpZipAppPath();
+  if (fs.existsSync(zipAppPath) && isValidYtDlpCommand(`python3 ${zipAppPath}`)) {
+    cachedYtDlpPath = `python3 ${zipAppPath}`;
     return cachedYtDlpPath;
   }
 
