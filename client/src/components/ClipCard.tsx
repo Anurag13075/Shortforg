@@ -246,35 +246,35 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
   return (
     <>
       <div
-        className={`rounded-2xl border transition-all duration-200 overflow-hidden flex flex-col bg-[#10121a] hover:border-white/20 shadow-xl ${
+        className={`rounded-2xl border transition-all duration-200 overflow-hidden flex flex-col bg-[#0b0b0f]/95 hover:border-white/20 shadow-[0_14px_40px_-12px_rgba(0,0,0,0.85),inset_0_1px_0_rgba(255,255,255,0.06)] ${
           clip.status === 'scheduled'
-            ? 'border-blue-500/50 ring-1 ring-blue-500/30'
+            ? 'border-cyan-400/45 ring-1 ring-cyan-400/20'
             : clip.status === 'approved'
-            ? 'border-emerald-500/50 ring-1 ring-emerald-500/30'
+            ? 'border-emerald-400/45 ring-1 ring-emerald-400/20'
             : clip.status === 'rejected'
             ? 'opacity-40 grayscale-[40%] border-white/[0.04]'
             : 'border-white/[0.08]'
         }`}
       >
         {/* Card Header: Score, Duration, Media Switcher */}
-        <div className="px-3.5 py-2.5 bg-[#141622] border-b border-white/[0.06] flex items-center justify-between">
+        <div className="px-3.5 py-2.5 bg-white/[0.025] border-b border-white/[0.06] flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/25 text-[11px] font-mono font-bold text-amber-300">
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/25 text-[11px] font-mono font-bold text-amber-300 tabular-nums">
               <Flame className="w-3 h-3 text-amber-400" />
               <span>{clip.virality_score}</span>
               <span className="text-zinc-500 font-normal">/100</span>
             </div>
-            <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-mono">
+            <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-mono tabular-nums">
               <Clock className="w-3 h-3 text-zinc-500" />
               <span>{clipDuration}s</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1 p-0.5 rounded-lg bg-black/40 border border-white/[0.06]">
+          <div className="flex items-center gap-1 p-0.5 rounded-lg bg-black/50 border border-white/[0.07]">
             <button
               onClick={() => setActiveTab('video')}
-              className={`p-1 rounded text-xs transition-colors ${
-                activeTab === 'video' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-white'
+              className={`p-1 rounded-md text-xs transition-colors ${
+                activeTab === 'video' ? 'bg-white text-zinc-950 shadow-sm' : 'text-zinc-500 hover:text-white'
               }`}
               title="Video Preview"
             >
@@ -282,8 +282,8 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
             </button>
             <button
               onClick={() => setActiveTab('thumbnail')}
-              className={`p-1 rounded text-xs transition-colors ${
-                activeTab === 'thumbnail' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-500 hover:text-white'
+              className={`p-1 rounded-md text-xs transition-colors ${
+                activeTab === 'thumbnail' ? 'bg-white text-zinc-950 shadow-sm' : 'text-zinc-500 hover:text-white'
               }`}
               title="Thumbnail Preview"
             >

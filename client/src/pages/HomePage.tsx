@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   Link as LinkIcon,
-  Play,
   Trash2,
   Clock,
   ArrowRight,
@@ -18,11 +17,70 @@ import { Project } from '../types';
 import { api } from '../api';
 import { ProgressBar } from '../components/ProgressBar';
 import { ShaderBackdrop } from '../components/ShaderBackdrop';
+import { SpotlightCard } from '../components/SpotlightCard';
 
 interface HomePageProps {
   onOpenProject: (projectId: string) => void;
   onToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
+
+/**
+ * Custom generative timeline/waveform visual header for project cards
+ * so every card feels like a tactile video-editing artifact.
+ */
+const TimelineVisualStrip: React.FC<{ seed: string; isProcessing?: boolean; isDone?: boolean; isFailed?: boolean }> = ({
+  seed,
+  isProcessing,
+  isDone,
+  isFailed
+}) => {
+  // Deterministic bar heights from project ID
+  const bars = Array.from({ length: 28 }, (_, i) => {
+    const charCode = seed.charCodeAt(i % seed.length) || 65;
+    return 22 + ((charCode * (i + 3)) % 68);
+  });
+
+  return (
+    <div className="relative h-20 w-full rounded-xl bg-[#070709] border border-white/[0.06] overflow-hidden px-3 py-2 flex flex-col justify-between">
+      <div className="dot-matrix absolute inset-0 opacity-60" />
+
+      {/* Top timecode ruler */}
+      <div className="relative z-10 flex items-center justify-between text-[9px] font-mono text-zinc-600 tabular-nums">
+        <span>00:00</span>
+        <span className="w-px h-1.5 bg-zinc-700" />
+        <span>03:30</span>
+        <span className="w-px h-1.5 bg-zinc-700" />
+        <span>07:00</span>
+        <span className="w-px h-1.5 bg-zinc-700" />
+        <span>10:30</span>
+      </div>
+
+      {/* Waveform bars */}
+      <div className="relative z-10 flex items-end justify-between gap-[3px] h-9">
+        {bars.map((h, i) => {
+          const isHighlight = i % 7 === 2 || i % 9 === 4;
+          return (
+            <div
+              key={i}
+              style={{ height: `${h}%` }}
+              className={`flex-1 rounded-full transition-all duration-300 ${
+                isFailed
+                  ? 'bg-rose-500/35'
+                  : isProcessing
+                  ? isHighlight
+                    ? 'bg-cyan-400/80 animate-pulse'
+                    : 'bg-white/20'
+                  : isDone && isHighlight
+                  ? 'bg-violet-400/80 group-hover/spot:bg-cyan-300'
+                  : 'bg-white/[0.14] group-hover/spot:bg-white/[0.26]'
+              }`}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) => {
   const [url, setUrl] = useState('');
@@ -38,10 +96,10 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
   const NICHE_OPTIONS = [
     { id: 'high_energy', label: 'High Energy', icon: '🔥' },
     { id: 'storytelling', label: 'Storytelling', icon: '📖' },
-    { id: 'gaming', label: 'Gaming & Clutch', icon: '🎮' },
+    { id: 'gaming', label: 'Gaming', icon: '🎮' },
     { id: 'podcast', label: 'Podcast', icon: '🎙️' },
     { id: 'comedy', label: 'Comedy', icon: '😂' },
-    { id: 'finance_tech', label: 'Tech & Biz', icon: '💡' }
+    { id: 'finance_tech', label: 'Tech', icon: '💡' }
   ];
 
   const fetchProjects = async () => {
@@ -189,6 +247,9 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
     return true;
   });
 
+  const totalClips = projects.reduce((acc, p) => acc + (p.clip_count || 0), 0);
+  const completedProjectsCount = projects.filter((p) => p.status === 'completed').length;
+
   const formatDuration = (sec: number) => {
     if (!sec) return '0m 0s';
     const m = Math.floor(sec / 60);
@@ -197,155 +258,165 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
   };
 
   return (
-    <div className="space-y-12 animate-fade-in relative pb-16">
-      {/* 1. OpenShaders-Inspired Hero Stage */}
-      <section className="relative rounded-3xl border border-white/[0.08] overflow-hidden bg-[#060608] px-6 py-12 sm:py-16 text-center shadow-[0_24px_80px_-20px_rgba(0,0,0,0.9)]">
-        <ShaderBackdrop intensity="hero" className="absolute inset-0 z-0 opacity-90" />
+    <div className="space-y-8 animate-fade-in relative pb-16">
+      {/* 1. Focused Creator Workspace Header + Aurora Command Bar */}
+      <section className="relative rounded-3xl border border-white/[0.08] overflow-hidden bg-[#060608] p-5 sm:p-7 shadow-[0_24px_80px_-20px_rgba(0,0,0,0.9)]">
+        <ShaderBackdrop intensity="hero" className="absolute inset-0 z-0 opacity-80" />
 
-        <div className="relative z-10 max-w-3xl mx-auto space-y-6">
-          {/* Minimal Pill */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/[0.05] border border-white/[0.1] backdrop-blur-xl text-[11px] font-mono text-zinc-300">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#10b981]" />
-            <span>Whisper + 120B Viral Director</span>
-            <span className="text-zinc-600">•</span>
-            <span className="text-zinc-400">1080p 9:16</span>
+        <div className="relative z-10 space-y-6">
+          {/* Top Workspace Telemetry Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.1] text-[10px] font-mono text-zinc-300 mb-2.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#10b981]" />
+                <span>9:16 SHORTS WORKSPACE</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-[-0.035em] text-white">
+                Create viral Shorts in one click.
+              </h1>
+            </div>
+
+            {/* Live Studio Telemetry */}
+            <div className="flex items-center gap-2 font-mono text-[11px]">
+              <div className="px-3 py-1.5 rounded-xl bg-black/45 border border-white/[0.08] backdrop-blur-md">
+                <span className="text-zinc-500 mr-1.5">Projects</span>
+                <span className="text-white font-semibold tabular-nums">{projects.length}</span>
+              </div>
+              <div className="px-3 py-1.5 rounded-xl bg-black/45 border border-white/[0.08] backdrop-blur-md">
+                <span className="text-zinc-500 mr-1.5">Shorts</span>
+                <span className="text-white font-semibold tabular-nums">{totalClips}</span>
+              </div>
+              <div className="hidden sm:block px-3 py-1.5 rounded-xl bg-black/45 border border-white/[0.08] backdrop-blur-md">
+                <span className="text-zinc-500 mr-1.5">Ready</span>
+                <span className="text-emerald-400 font-semibold tabular-nums">{completedProjectsCount}</span>
+              </div>
+            </div>
           </div>
 
-          {/* Tight Editorial Display Title (ForgeUI / OpenShaders) */}
-          <h1 className="text-3xl sm:text-5xl md:text-[54px] font-extrabold tracking-[-0.04em] text-white leading-[1.06]">
-            Turn raw footage into{' '}
-            <span className="text-gradient-brand">viral cinema.</span>
-          </h1>
+          {/* Aurora Command Bar */}
+          <div className="relative glass-deck rounded-2xl p-4 overflow-hidden space-y-3.5">
+            <div className="aurora-glow-edge absolute -bottom-7 left-1/2 -translate-x-1/2 w-[90%] h-20 animate-aurora" />
 
-          <p className="text-zinc-400 text-sm sm:text-[15px] max-w-xl mx-auto leading-relaxed">
-            Paste any YouTube link or drop a video file. AI isolates peak hooks, snaps sentence boundaries, and masters 9:16 Shorts with kinetic Anton captions.
-          </p>
-
-          {/* 2. Designeer-Inspired Aurora Command Dock */}
-          <div className="max-w-2xl mx-auto pt-3">
-            <div className="relative glass-deck rounded-2xl p-4 sm:p-5 overflow-hidden text-left space-y-4">
-              {/* Warm Iridescent Aurora Bottom Glow (Designeer voice interface inspiration) */}
-              <div className="aurora-glow-edge absolute -bottom-6 left-1/2 -translate-x-1/2 w-[90%] h-20 animate-aurora" />
-
-              {/* Top Controls Row: Mode + Tone */}
-              <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
-                <div className="inline-flex p-0.5 rounded-xl bg-black/50 border border-white/[0.08]">
-                  <button
-                    type="button"
-                    onClick={() => setInputMode('url')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                      inputMode === 'url'
-                        ? 'bg-white text-zinc-950 font-semibold shadow-sm'
-                        : 'text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    <LinkIcon className="w-3.5 h-3.5" />
-                    <span>YouTube URL</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInputMode('upload')}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                      inputMode === 'upload'
-                        ? 'bg-white text-zinc-950 font-semibold shadow-sm'
-                        : 'text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Upload Video</span>
-                  </button>
-                </div>
-
-                {/* Compact Tone Pills */}
-                <div className="flex flex-wrap items-center gap-1">
-                  {NICHE_OPTIONS.map((n) => (
-                    <button
-                      key={n.id}
-                      type="button"
-                      onClick={() => setNiche(n.id)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all border ${
-                        niche === n.id
-                          ? 'bg-white/[0.12] border-white/[0.24] text-white'
-                          : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.04]'
-                      }`}
-                    >
-                      <span className="mr-1">{n.icon}</span>
-                      {n.label}
-                    </button>
-                  ))}
-                </div>
+            <div className="relative z-10 flex flex-wrap items-center justify-between gap-3">
+              <div className="inline-flex p-0.5 rounded-xl bg-black/55 border border-white/[0.08]">
+                <button
+                  type="button"
+                  onClick={() => setInputMode('url')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    inputMode === 'url'
+                      ? 'bg-white text-zinc-950 font-semibold shadow-sm'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <LinkIcon className="w-3.5 h-3.5" />
+                  <span>YouTube URL</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInputMode('upload')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    inputMode === 'upload'
+                      ? 'bg-white text-zinc-950 font-semibold shadow-sm'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload MP4</span>
+                </button>
               </div>
 
-              {/* Input Area */}
-              <div className="relative z-10">
-                {inputMode === 'url' ? (
-                  <form onSubmit={handleGenerate} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 rounded-xl bg-black/55 border border-white/[0.1] focus-within:border-white/30 transition-colors">
-                    <div className="flex items-center gap-2.5 px-3 flex-1 min-w-0">
-                      <LinkIcon className="w-4 h-4 text-zinc-500 shrink-0" />
-                      <input
-                        type="url"
-                        value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        placeholder="https://youtube.com/watch?v=..."
-                        required
-                        className="w-full bg-transparent text-xs sm:text-sm text-white placeholder-zinc-500 focus:outline-none py-2 font-mono"
-                      />
-                      {url && (
-                        <button
-                          type="button"
-                          onClick={() => setUrl('')}
-                          className="text-[11px] text-zinc-500 hover:text-white font-mono"
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
+              <div className="flex flex-wrap items-center gap-1">
+                {NICHE_OPTIONS.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => setNiche(n.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all border ${
+                      niche === n.id
+                        ? 'bg-white/[0.12] border-white/[0.25] text-white'
+                        : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <span className="mr-1">{n.icon}</span>
+                    {n.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-                    <button
-                      type="submit"
-                      disabled={isSubmitting || !url.trim()}
-                      className="btn-primary flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-xs disabled:opacity-40 cursor-pointer shrink-0"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                          <span>Processing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Forge Shorts</span>
-                        </>
-                      )}
-                    </button>
-                  </form>
-                ) : (
-                  <label className="flex flex-col items-center justify-center p-6 rounded-xl bg-black/45 border border-dashed border-white/[0.14] hover:border-white/35 cursor-pointer transition-all group">
-                    <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.1] flex items-center justify-center mb-2.5 group-hover:scale-105 transition-transform">
+            <div className="relative z-10">
+              {inputMode === 'url' ? (
+                <form onSubmit={handleGenerate} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 rounded-xl bg-black/60 border border-white/[0.1] focus-within:border-white/30 transition-colors">
+                  <div className="flex items-center gap-2.5 px-3 flex-1 min-w-0">
+                    <LinkIcon className="w-4 h-4 text-zinc-500 shrink-0" />
+                    <input
+                      type="url"
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      placeholder="Paste YouTube video link (e.g. https://youtube.com/watch?v=...)"
+                      required
+                      className="w-full bg-transparent text-xs sm:text-sm text-white placeholder-zinc-500 focus:outline-none py-2 font-mono"
+                    />
+                    {url && (
+                      <button
+                        type="button"
+                        onClick={() => setUrl('')}
+                        className="text-[11px] text-zinc-500 hover:text-white font-mono"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || !url.trim()}
+                    className="btn-primary flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-xs disabled:opacity-40 cursor-pointer shrink-0"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Processing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Forge Shorts</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              ) : (
+                <label className="flex items-center justify-between gap-4 p-4 rounded-xl bg-black/50 border border-dashed border-white/[0.14] hover:border-white/35 cursor-pointer transition-all group">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.1] flex items-center justify-center group-hover:scale-105 transition-transform">
                       <FileVideo className="w-5 h-5 text-white" />
                     </div>
-                    <p className="text-xs font-semibold text-white">
-                      {isSubmitting ? 'Uploading video to studio...' : 'Click or drop MP4 / MOV / WebM file'}
-                    </p>
-                    <p className="text-[11px] text-zinc-500 font-mono mt-0.5">
-                      Direct local upload • Zero YouTube bot challenges
-                    </p>
-                    <input
-                      type="file"
-                      accept="video/mp4,video/quicktime,video/webm"
-                      onChange={handleFileUpload}
-                      disabled={isSubmitting}
-                      className="hidden"
-                    />
-                  </label>
-                )}
-              </div>
+                    <div>
+                      <p className="text-xs font-semibold text-white">
+                        {isSubmitting ? 'Uploading video to studio...' : 'Drop or select MP4 / MOV / WebM file'}
+                      </p>
+                      <p className="text-[11px] text-zinc-500 font-mono">
+                        Processes directly via Whisper + FFmpeg (zero YouTube bot checks)
+                      </p>
+                    </div>
+                  </div>
+                  <span className="btn-glass px-3 py-1.5 rounded-lg text-xs font-medium shrink-0">Browse</span>
+                  <input
+                    type="file"
+                    accept="video/mp4,video/quicktime,video/webm"
+                    onChange={handleFileUpload}
+                    disabled={isSubmitting}
+                    className="hidden"
+                  />
+                </label>
+              )}
             </div>
           </div>
         </div>
       </section>
 
-      {/* 3. Live Active Pipeline Banner */}
+      {/* 2. Live Active Pipeline Banner */}
       {activeProject && (
         <section className="animate-fade-in">
           <div className="studio-card p-5 space-y-3 border-white/[0.14]">
@@ -373,18 +444,17 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
         </section>
       )}
 
-      {/* 4. Swiss-Grid Projects Feed */}
-      <section className="space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/[0.06] pb-4">
+      {/* 3. Visual Projects Grid */}
+      <section className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/[0.06] pb-3.5">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-bold text-white tracking-tight">Projects</h2>
+            <h2 className="text-sm font-bold text-white tracking-tight">Recent Projects</h2>
             <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-white/[0.05] text-zinc-400 border border-white/[0.07]">
               {filteredProjects.length}
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Filter Pills */}
             <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/[0.07]">
               {(['all', 'completed', 'processing', 'failed'] as const).map((tab) => (
                 <button
@@ -401,7 +471,6 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
               ))}
             </div>
 
-            {/* Search Input */}
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -418,7 +487,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="studio-card p-5 h-44 animate-pulse bg-white/[0.02]" />
+              <div key={i} className="studio-card p-5 h-52 animate-pulse bg-white/[0.02]" />
             ))}
           </div>
         ) : filteredProjects.length === 0 ? (
@@ -426,7 +495,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
             <Layers className="w-8 h-8 text-zinc-600 mx-auto" />
             <h3 className="text-sm font-semibold text-zinc-200">No projects match</h3>
             <p className="text-xs text-zinc-500 max-w-xs mx-auto">
-              Paste a YouTube link or upload a video above to generate viral 9:16 Shorts.
+              Paste a YouTube link or upload an MP4 above to forge viral 9:16 Shorts.
             </p>
           </div>
         ) : (
@@ -437,13 +506,21 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
               const isDone = project.status === 'completed';
 
               return (
-                <div
+                <SpotlightCard
                   key={project.id}
                   onClick={() => onOpenProject(project.id)}
-                  className="studio-card-interactive p-5 flex flex-col justify-between gap-4 cursor-pointer group relative overflow-hidden"
+                  className="p-4 flex flex-col justify-between gap-3.5 cursor-pointer"
                 >
-                  {/* Top Row: Index + Status Pill */}
                   <div className="space-y-3">
+                    {/* Visual Waveform/Timeline Header */}
+                    <TimelineVisualStrip
+                      seed={project.id}
+                      isProcessing={isProcessing}
+                      isDone={isDone}
+                      isFailed={isFailed}
+                    />
+
+                    {/* Meta + Status */}
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-mono text-zinc-500 tabular-nums">
                         {String(idx + 1).padStart(2, '0')} • {new Date(project.created_at).toLocaleDateString()}
@@ -463,7 +540,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
                       </span>
                     </div>
 
-                    <h3 className="text-sm font-semibold text-white line-clamp-2 leading-snug group-hover:text-zinc-100">
+                    <h3 className="text-sm font-semibold text-white line-clamp-2 leading-snug">
                       {project.title || project.youtube_url}
                     </h3>
 
@@ -474,14 +551,14 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
                     )}
 
                     {isProcessing && (
-                      <div className="space-y-1.5 pt-1">
+                      <div className="space-y-1.5 pt-0.5">
                         <div className="flex justify-between text-[10px] font-mono text-zinc-400">
                           <span className="truncate pr-2">{project.stage_message || 'Processing...'}</span>
                           <span>{Math.round(project.progress)}%</span>
                         </div>
                         <div className="w-full h-1 rounded-full bg-white/[0.07] overflow-hidden">
                           <div
-                            className="h-full bg-white transition-all duration-300"
+                            className="h-full bg-gradient-to-r from-violet-400 to-cyan-300 transition-all duration-300"
                             style={{ width: `${Math.max(8, project.progress)}%` }}
                           />
                         </div>
@@ -501,7 +578,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
                       ) : null}
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1">
                       {isFailed && (
                         <button
                           onClick={(e) => handleRetry(project.id, e)}
@@ -518,14 +595,14 @@ export const HomePage: React.FC<HomePageProps> = ({ onOpenProject, onToast }) =>
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
-                      <span className="flex items-center gap-1 pl-2 text-xs font-medium text-zinc-300 group-hover:text-white transition-colors">
+                      <span className="flex items-center gap-1 pl-1.5 text-xs font-medium text-zinc-300 group-hover/spot:text-white transition-colors">
                         <Film className="w-3.5 h-3.5" />
-                        <span>Open</span>
-                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                        <span>Studio</span>
+                        <ArrowRight className="w-3 h-3 group-hover/spot:translate-x-0.5 transition-transform" />
                       </span>
                     </div>
                   </div>
-                </div>
+                </SpotlightCard>
               );
             })}
           </div>

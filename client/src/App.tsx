@@ -9,6 +9,7 @@ import { StudioCopilot } from './components/StudioCopilot';
 import { CookieModal } from './components/CookieModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { ShaderBackdrop } from './components/ShaderBackdrop';
+import { CommandPalette } from './components/CommandPalette';
 import { HealthInfo, Channel } from './types';
 import { api } from './api';
 
@@ -37,10 +38,22 @@ export function App() {
     return localStorage.getItem('shortsforge_active_project_id');
   });
 
-  // Slide-over Copilot drawer state
+  // Slide-over Copilot drawer & Command Palette state
   const [isCopilotDrawerOpen, setIsCopilotDrawerOpen] = useState(false);
   const [isCookieModalOpen, setIsCookieModalOpen] = useState(false);
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [hasCookies, setHasCookies] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const checkCookies = async () => {
     try {
@@ -161,6 +174,7 @@ export function App() {
           health={health}
           hasCookies={hasCookies}
           onOpenCookiesModal={() => setIsCookieModalOpen(true)}
+          onSearchFocus={() => setIsCommandOpen(true)}
           onToggleCopilot={() => setIsCopilotDrawerOpen((prev) => !prev)}
         />
 
@@ -265,6 +279,15 @@ export function App() {
           checkCookies();
         }}
         onToast={addToast}
+      />
+
+      {/* Global Cmd+K Command Palette */}
+      <CommandPalette
+        isOpen={isCommandOpen}
+        onClose={() => setIsCommandOpen(false)}
+        onSelectTab={handleSelectTab}
+        onOpenProject={handleOpenProject}
+        onOpenCookiesModal={() => setIsCookieModalOpen(true)}
       />
     </div>
   );

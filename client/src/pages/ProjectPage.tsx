@@ -336,18 +336,18 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 
       {/* Live Studio Terminal / Pipeline Logs */}
       {logs.length > 0 && (
-        <div className="rounded-xl border border-white/[0.08] bg-[#0c0d14] overflow-hidden shadow-lg">
+        <div className="rounded-2xl border border-white/[0.08] bg-[#0a0a0e]/95 overflow-hidden shadow-lg">
           <div
             onClick={() => setShowLogs(!showLogs)}
-            className="px-4 py-2 bg-[#12131c] border-b border-white/[0.06] flex items-center justify-between cursor-pointer hover:bg-[#161824] transition-colors"
+            className="px-4 py-2.5 bg-white/[0.03] border-b border-white/[0.06] flex items-center justify-between cursor-pointer hover:bg-white/[0.05] transition-colors"
           >
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs font-mono font-semibold text-zinc-200">Live Studio Engine Logs</span>
-              <span className="text-[10px] font-mono text-zinc-500">({logs.length} events)</span>
+              <span className="text-xs font-mono font-semibold text-zinc-200">Studio Engine Logs</span>
+              <span className="text-[10px] font-mono text-zinc-500">({logs.length})</span>
             </div>
             <span className="text-[11px] font-mono text-zinc-400 hover:text-white">
-              {showLogs ? 'Hide Logs ▲' : 'Show Logs ▼'}
+              {showLogs ? 'Hide ▲' : 'Show ▼'}
             </span>
           </div>
           {showLogs && (
@@ -377,12 +377,12 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 
       {/* Filter Tabs */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 p-1 rounded-lg bg-[#111218] border border-white/[0.08]">
+        <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.03] border border-white/[0.07]">
           <button
             onClick={() => setFilter('all')}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
               filter === 'all'
-                ? 'bg-zinc-800 text-white shadow-sm'
+                ? 'bg-white text-zinc-950 font-semibold shadow-sm'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
@@ -391,9 +391,9 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 
           <button
             onClick={() => setFilter('approved')}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
               filter === 'approved'
-                ? 'bg-zinc-800 text-white shadow-sm'
+                ? 'bg-white text-zinc-950 font-semibold shadow-sm'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
@@ -402,9 +402,9 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 
           <button
             onClick={() => setFilter('scheduled')}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
               filter === 'scheduled'
-                ? 'bg-zinc-800 text-white shadow-sm'
+                ? 'bg-white text-zinc-950 font-semibold shadow-sm'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
@@ -413,9 +413,9 @@ export const ProjectPage: React.FC<ProjectPageProps> = ({
 
           <button
             onClick={() => setFilter('draft')}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
               filter === 'draft'
-                ? 'bg-zinc-800 text-white shadow-sm'
+                ? 'bg-white text-zinc-950 font-semibold shadow-sm'
                 : 'text-zinc-400 hover:text-white'
             }`}
           >

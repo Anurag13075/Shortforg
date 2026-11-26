@@ -661,7 +661,7 @@ export const SchedulePage: React.FC<SchedulePageProps> = ({
         </div>
 
         {filteredQueue.length === 0 ? (
-          <div className="studio-card p-10 text-center border-dashed">
+          <div className="studio-card dot-matrix p-12 text-center border-dashed border-white/[0.1]">
             <Clock className="w-7 h-7 text-zinc-600 mx-auto mb-2" />
             <p className="text-xs font-semibold text-zinc-300">Upload queue is empty</p>
             <p className="text-[11px] text-zinc-500 max-w-sm mx-auto mt-1">
@@ -677,19 +677,19 @@ export const SchedulePage: React.FC<SchedulePageProps> = ({
               return (
                 <div
                   key={item.id}
-                  className="studio-card p-3 flex items-center justify-between gap-3"
+                  className="studio-card p-3.5 flex items-center justify-between gap-3"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     {/* 9:16 Miniature Thumbnail Preview */}
-                    <div className="w-10 h-14 bg-black rounded overflow-hidden shrink-0 border border-white/10 flex items-center justify-center">
-                      {item.thumbnail_path ? (
+                    <div className="w-10 h-14 bg-[#070709] rounded-lg overflow-hidden shrink-0 border border-white/[0.1] flex items-center justify-center relative">
+                      <Youtube className="w-4 h-4 text-zinc-700" />
+                      {item.thumbnail_path && (
                         <img
                           src={api.getThumbnailUrl(item.clip_id)}
                           alt={item.clip_title || ''}
-                          className="w-full h-full object-cover"
+                          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          className="absolute inset-0 w-full h-full object-cover"
                         />
-                      ) : (
-                        <Youtube className="w-4 h-4 text-zinc-600" />
                       )}
                     </div>
 
