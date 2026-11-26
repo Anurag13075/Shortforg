@@ -8,6 +8,7 @@ import { LongformPage } from './pages/LongformPage';
 import { StudioCopilot } from './components/StudioCopilot';
 import { CookieModal } from './components/CookieModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
+import { ShaderBackdrop } from './components/ShaderBackdrop';
 import { HealthInfo, Channel } from './types';
 import { api } from './api';
 
@@ -137,13 +138,9 @@ export function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#07080e] text-zinc-100 flex flex-row font-sans selection:bg-indigo-500/30 selection:text-white relative overflow-x-hidden">
-      {/* Ambient background studio lighting */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <div className="absolute -top-[250px] left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-gradient-to-b from-indigo-600/12 via-purple-600/6 to-transparent blur-[140px] rounded-full" />
-        <div className="absolute top-[35%] -left-[180px] w-[450px] h-[450px] bg-blue-600/6 blur-[130px] rounded-full" />
-        <div className="absolute top-[65%] -right-[180px] w-[450px] h-[450px] bg-amber-500/5 blur-[130px] rounded-full" />
-      </div>
+    <div className="min-h-screen bg-[#060608] text-zinc-100 flex flex-row font-sans selection:bg-white/20 selection:text-white relative overflow-x-hidden">
+      {/* Living Shader & Film-Grain Ambient Canvas */}
+      <ShaderBackdrop intensity="subtle" className="fixed inset-0 z-0 opacity-55" />
 
       {/* Sidebar Navigation */}
       <Sidebar
@@ -226,10 +223,10 @@ export function App() {
         </main>
 
         {/* Studio Footer */}
-        <footer className="border-t border-white/[0.05] py-5 px-8 text-center bg-[#090a0f]">
+        <footer className="border-t border-white/[0.06] py-5 px-8 text-center bg-[#060608]/80 backdrop-blur-xl">
           <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-zinc-500 text-[11px] font-mono">
-            <p>© ShortsForge Studio • Designed for high-retention vertical content</p>
-            <p>Groq Whisper & 120B Copilot • Native FFmpeg Engine</p>
+            <p>ShortsForge Studio 2.0 • 9:16 Shorts & 16:9 Long-Form</p>
+            <p>Groq Whisper + 120B • Native FFmpeg Engine</p>
           </div>
         </footer>
       </div>

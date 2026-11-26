@@ -58,14 +58,14 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
       </div>
 
       {/* Progress Track */}
-      <div className="w-full bg-zinc-900 rounded-full h-1.5 overflow-hidden mb-4 border border-white/[0.04]">
+      <div className="w-full bg-white/[0.05] rounded-full h-1.5 overflow-hidden mb-4 border border-white/[0.06]">
         <div
           className={`h-full rounded-full transition-all duration-500 ease-out ${
             status === 'failed'
               ? 'bg-rose-500'
               : status === 'completed'
-              ? 'bg-emerald-500'
-              : 'bg-gradient-to-r from-blue-600 to-indigo-500 shadow-[0_0_12px_rgba(59,130,246,0.5)]'
+              ? 'bg-emerald-400'
+              : 'bg-gradient-to-r from-violet-400 via-cyan-300 to-white shadow-[0_0_14px_rgba(167,139,250,0.55)]'
           }`}
           style={{ width: `${Math.min(100, Math.max(3, progress))}%` }}
         />

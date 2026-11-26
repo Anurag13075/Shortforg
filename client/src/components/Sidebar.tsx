@@ -5,10 +5,9 @@ import {
   Layers,
   Youtube,
   Plus,
-  Terminal,
-  Cpu,
   Bot,
-  Video
+  Video,
+  Sparkles
 } from 'lucide-react';
 import { HealthInfo, Channel } from '../types';
 
@@ -27,122 +26,103 @@ export const Sidebar: React.FC<SidebarProps> = ({
   channels,
   health
 }) => {
+  const navItemClass = (active: boolean) =>
+    `group relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] transition-all duration-150 ${
+      active
+        ? 'bg-white/[0.08] text-white font-semibold shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] border border-white/[0.1]'
+        : 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.035] border border-transparent'
+    }`;
+
   return (
-    <aside className="w-64 shrink-0 hidden lg:flex flex-col justify-between border-r border-white/[0.06] bg-[#090a0f] p-5 h-screen sticky top-0 z-40 select-none">
-      {/* Top Branding & Main Navigation */}
+    <aside className="w-64 shrink-0 hidden lg:flex flex-col justify-between border-r border-white/[0.06] bg-[#070709]/95 backdrop-blur-2xl p-4 h-screen sticky top-0 z-40 select-none">
+      {/* Top Branding & Navigation */}
       <div className="space-y-6">
-        {/* Brand header */}
+        {/* Brand Header */}
         <div
           onClick={() => onSelectTab('home')}
-          className="flex items-start gap-3 cursor-pointer group"
+          className="flex items-center gap-3 px-2 py-1.5 cursor-pointer group"
         >
-          <div className="w-8 h-8 rounded-lg bg-[#141620] border border-white/[0.1] flex items-center justify-center text-white font-bold text-xs shadow-sm group-hover:border-white/20 transition-all">
-            <Film className="w-4 h-4 text-zinc-300" />
+          <div className="relative w-8 h-8 rounded-xl bg-gradient-to-b from-white/15 to-white/[0.03] border border-white/[0.14] flex items-center justify-center shadow-[0_4px_12px_rgba(0,0,0,0.5)] group-hover:border-white/30 transition-all">
+            <Sparkles className="w-4 h-4 text-white" />
           </div>
 
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold text-sm tracking-tight text-white group-hover:text-zinc-200 transition-colors">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sm tracking-tight text-white">
                 ShortsForge
               </span>
-              <span className="text-[9px] font-mono font-semibold px-1.5 py-0.2 rounded bg-white/[0.06] text-zinc-400 border border-white/[0.08]">
-                v1.0
+              <span className="text-[9px] font-mono font-medium px-1.5 py-0.5 rounded-md bg-white/[0.06] text-zinc-400 border border-white/[0.08]">
+                2.0
               </span>
             </div>
-            <p className="text-[11px] text-zinc-500 leading-tight mt-0.5">
-              Autonomous 9:16 Shorts Studio
+            <p className="text-[11px] text-zinc-500 leading-tight mt-0.5 truncate">
+              Autonomous Video Studio
             </p>
           </div>
         </div>
 
-        {/* Primary Navigation */}
+        {/* Workspace Navigation */}
         <div className="space-y-1">
-          <p className="text-[10px] font-mono uppercase tracking-wider text-zinc-500 px-3 mb-2">
-            Workspace
+          <p className="text-[10px] font-mono uppercase tracking-[0.14em] text-zinc-500 px-3 mb-2">
+            Studio
           </p>
 
-          <button
-            onClick={() => onSelectTab('home')}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-              currentTab === 'home'
-                ? 'bg-zinc-800 text-white font-semibold shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            <span>Projects & Feed</span>
+          <button onClick={() => onSelectTab('home')} className={navItemClass(currentTab === 'home')}>
+            <div className="flex items-center gap-2.5">
+              <Layers className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" />
+              <span>Projects & Feed</span>
+            </div>
           </button>
 
           {activeProjectId && (
-            <button
-              onClick={() => onSelectTab('project')}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                currentTab === 'project'
-                  ? 'bg-zinc-800 text-white font-semibold shadow-sm'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
-              }`}
-            >
-              <Film className="w-4 h-4" />
-              <span>Clips Studio</span>
+            <button onClick={() => onSelectTab('project')} className={navItemClass(currentTab === 'project')}>
+              <div className="flex items-center gap-2.5">
+                <Film className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" />
+                <span>Clips Studio</span>
+              </div>
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-zinc-300">
+                9:16
+              </span>
             </button>
           )}
 
-          <button
-            onClick={() => onSelectTab('longform')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-              currentTab === 'longform'
-                ? 'bg-gradient-to-r from-purple-900/60 to-indigo-900/60 border border-purple-500/30 text-white font-semibold shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
-            }`}
-          >
+          <button onClick={() => onSelectTab('longform')} className={navItemClass(currentTab === 'longform')}>
             <div className="flex items-center gap-2.5">
-              <Video className="w-4 h-4 text-purple-400" />
+              <Video className={`w-4 h-4 transition-colors ${currentTab === 'longform' ? 'text-violet-300' : 'text-zinc-400 group-hover:text-violet-300'}`} />
               <span>Long-Form Studio</span>
             </div>
-            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-purple-500/10 border border-purple-500/20 text-purple-300 font-semibold">
-              1080p
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-md bg-violet-500/15 border border-violet-400/25 text-violet-300">
+              16:9
             </span>
           </button>
 
-          <button
-            onClick={() => onSelectTab('schedule')}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-              currentTab === 'schedule'
-                ? 'bg-zinc-800 text-white font-semibold shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            <span>Publishing & Queue</span>
+          <button onClick={() => onSelectTab('schedule')} className={navItemClass(currentTab === 'schedule')}>
+            <div className="flex items-center gap-2.5">
+              <Calendar className="w-4 h-4 text-zinc-400 group-hover:text-white transition-colors" />
+              <span>Publishing & Queue</span>
+            </div>
           </button>
 
-          <button
-            onClick={() => onSelectTab('copilot')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-              currentTab === 'copilot'
-                ? 'bg-zinc-800 text-white font-semibold shadow-sm'
-                : 'text-zinc-400 hover:text-white hover:bg-white/[0.04]'
-            }`}
-          >
+          <button onClick={() => onSelectTab('copilot')} className={navItemClass(currentTab === 'copilot')}>
             <div className="flex items-center gap-2.5">
-              <Bot className="w-4 h-4 text-blue-400" />
+              <Bot className={`w-4 h-4 transition-colors ${currentTab === 'copilot' ? 'text-cyan-300' : 'text-zinc-400 group-hover:text-cyan-300'}`} />
               <span>Studio Copilot</span>
             </div>
-            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400 font-semibold">
-              Master
+            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-md bg-cyan-500/10 border border-cyan-400/20 text-cyan-300">
+              AI
             </span>
           </button>
         </div>
 
         {/* Channels Section */}
-        <div className="space-y-2 pt-2 border-t border-white/[0.05]">
+        <div className="space-y-2 pt-3 border-t border-white/[0.06]">
           <div className="flex items-center justify-between px-3">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">
-              YouTube Channels ({channels.length})
+            <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-zinc-500">
+              Channels ({channels.length})
             </span>
             <button
               onClick={() => onSelectTab('schedule')}
-              className="text-zinc-500 hover:text-white transition-colors"
+              className="p-1 rounded-md text-zinc-500 hover:text-white hover:bg-white/[0.06] transition-colors"
               title="Add Channel"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -150,13 +130,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {channels.length === 0 ? (
-            <div className="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04]">
-              <p className="text-[11px] text-zinc-500">No channels connected</p>
+            <div className="px-3 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+              <p className="text-[11px] text-zinc-500">No channels linked</p>
               <button
                 onClick={() => onSelectTab('schedule')}
-                className="text-[11px] text-blue-400 hover:text-blue-300 font-medium mt-1 inline-block"
+                className="text-[11px] text-white hover:text-zinc-300 font-medium mt-1 inline-block"
               >
-                + Connect channel
+                + Connect YouTube
               </button>
             </div>
           ) : (
@@ -165,23 +145,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div
                   key={ch.id}
                   onClick={() => onSelectTab('schedule')}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-white/[0.03] transition-colors cursor-pointer group"
+                  className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl hover:bg-white/[0.04] transition-colors cursor-pointer group"
                 >
                   {ch.avatar_url ? (
                     <img
                       src={ch.avatar_url}
                       alt={ch.title}
-                      className="w-4 h-4 rounded-full object-cover shrink-0"
+                      className="w-5 h-5 rounded-full object-cover ring-1 ring-white/15 shrink-0"
                     />
                   ) : (
                     <Youtube className="w-4 h-4 text-zinc-500 shrink-0" />
                   )}
-                  <span className="text-xs text-zinc-400 group-hover:text-zinc-200 truncate flex-1 font-medium">
+                  <span className="text-xs text-zinc-300 group-hover:text-white truncate flex-1 font-medium">
                     {ch.title}
                   </span>
                   <span
                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                      ch.status === 'active' ? 'bg-emerald-400 shadow-[0_0_6px_#10b981]' : 'bg-rose-400'
+                      ch.status === 'active' ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-rose-400'
                     }`}
                   />
                 </div>
@@ -191,31 +171,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* Bottom Engine Status */}
-      <div className="space-y-3 pt-4 border-t border-white/[0.05]">
-        <div className="studio-card p-3 space-y-2 text-[11px] font-mono">
-          <div className="text-zinc-500 uppercase text-[9px] tracking-wider">Engine Specs</div>
-          <div className="flex items-center justify-between text-zinc-400">
-            <span>Aspect Ratio:</span>
-            <span className="text-zinc-200 font-medium">9:16 (1080x1920)</span>
+      {/* Bottom Engine Telemetry */}
+      <div className="space-y-3 pt-4 border-t border-white/[0.06]">
+        <div className="rounded-xl bg-white/[0.025] border border-white/[0.06] p-3 space-y-2 text-[11px] font-mono">
+          <div className="flex items-center justify-between text-zinc-500 uppercase text-[9px] tracking-[0.14em]">
+            <span>Pipeline</span>
+            <span className={health?.ffmpeg?.available !== false ? 'text-emerald-400' : 'text-rose-400'}>
+              ● {health?.ffmpeg?.available !== false ? 'Online' : 'Offline'}
+            </span>
           </div>
           <div className="flex items-center justify-between text-zinc-400">
-            <span>Subtitles:</span>
-            <span className="text-amber-400 font-medium">Hormozi ASS</span>
+            <span>Formats</span>
+            <span className="text-zinc-200">9:16 + 16:9</span>
           </div>
           <div className="flex items-center justify-between text-zinc-400">
-            <span>Downloader:</span>
-            <span className="text-emerald-400 font-medium">Self-Hosted</span>
+            <span>Mastering</span>
+            <span className="text-zinc-200">-14 LUFS</span>
           </div>
           <div className="flex items-center justify-between text-zinc-400">
-            <span>Groq Engine:</span>
-            <span className="text-zinc-300">Whisper + 120B</span>
+            <span>AI Core</span>
+            <span className="text-zinc-200">Whisper + 120B</span>
           </div>
-        </div>
-
-        <div className="flex items-center justify-between text-[10px] text-zinc-600 font-mono px-1">
-          <span>FFmpeg Native</span>
-          <span className="text-emerald-500">● Online</span>
         </div>
       </div>
     </aside>

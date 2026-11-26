@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, Film, Calendar, Terminal, Search, Bot, KeyRound, Video } from 'lucide-react';
+import { Layers, Film, Calendar, Search, Bot, KeyRound, Video, Sparkles } from 'lucide-react';
 import { HealthInfo } from '../types';
 
 interface NavbarProps {
@@ -26,42 +26,40 @@ export const Navbar: React.FC<NavbarProps> = ({
   const hasFfmpegIssue = health && !health.ffmpeg.available;
 
   return (
-    <header className="sticky top-0 z-30 w-full border-b border-white/[0.06] bg-[#090a0f]/90 backdrop-blur-md px-4 sm:px-6 h-14 flex items-center justify-between">
-      {/* Mobile Branding / Desktop Breadcrumb */}
+    <header className="sticky top-0 z-30 w-full border-b border-white/[0.06] bg-[#060608]/80 backdrop-blur-2xl px-4 sm:px-6 h-14 flex items-center justify-between">
+      {/* Left: Mobile Brand + Quick Search Pill */}
       <div className="flex items-center gap-3">
         <div
           onClick={() => onSelectTab('home')}
           className="flex lg:hidden items-center gap-2 cursor-pointer"
         >
-          <div className="w-6 h-6 rounded-md bg-[#141620] border border-white/10 flex items-center justify-center">
-            <Film className="w-3.5 h-3.5 text-zinc-300" />
+          <div className="w-7 h-7 rounded-lg bg-white/[0.08] border border-white/[0.12] flex items-center justify-center">
+            <Sparkles className="w-3.5 h-3.5 text-white" />
           </div>
           <span className="font-bold text-xs tracking-tight text-white">ShortsForge</span>
         </div>
 
-        {/* Desktop Quick Command Search */}
-        <div
+        <button
+          type="button"
           onClick={onSearchFocus}
-          className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-[#111218] hover:bg-[#151722] border border-white/[0.06] cursor-pointer transition-colors text-zinc-400 w-64 group"
+          className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.07] hover:border-white/[0.14] cursor-pointer transition-all text-zinc-400 w-64 group"
         >
-          <Search className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
-          <span className="text-xs text-zinc-400 group-hover:text-zinc-200 transition-colors font-mono">
-            Search projects...
+          <Search className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-200 transition-colors" />
+          <span className="text-xs text-zinc-500 group-hover:text-zinc-300 transition-colors">
+            Search studio...
           </span>
-          <kbd className="ml-auto font-mono text-[9px] text-zinc-500 bg-white/[0.04] border border-white/[0.08] px-1.5 py-0.5 rounded">
+          <kbd className="ml-auto font-mono text-[10px] text-zinc-500 bg-white/[0.04] border border-white/[0.08] px-1.5 py-0.5 rounded-md">
             ⌘K
           </kbd>
-        </div>
+        </button>
       </div>
 
-      {/* Segmented Capsule Tabs (Visible on mobile & tablet) */}
-      <nav className="flex lg:hidden items-center p-1 rounded-lg bg-[#111218] border border-white/[0.08]">
+      {/* Mobile & Tablet Segmented Pill Nav */}
+      <nav className="flex lg:hidden items-center p-1 rounded-xl bg-white/[0.03] border border-white/[0.07]">
         <button
           onClick={() => onSelectTab('home')}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-            currentTab === 'home'
-              ? 'bg-zinc-800 text-white font-semibold shadow-sm'
-              : 'text-zinc-400 hover:text-white'
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            currentTab === 'home' ? 'bg-white text-zinc-950 font-semibold' : 'text-zinc-400 hover:text-white'
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
@@ -71,23 +69,29 @@ export const Navbar: React.FC<NavbarProps> = ({
         {activeProjectId && (
           <button
             onClick={() => onSelectTab('project')}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-              currentTab === 'project'
-                ? 'bg-zinc-800 text-white font-semibold shadow-sm'
-                : 'text-zinc-400 hover:text-white'
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+              currentTab === 'project' ? 'bg-white text-zinc-950 font-semibold' : 'text-zinc-400 hover:text-white'
             }`}
           >
             <Film className="w-3.5 h-3.5" />
-            <span>Studio</span>
+            <span>Clips</span>
           </button>
         )}
 
         <button
+          onClick={() => onSelectTab('longform')}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            currentTab === 'longform' ? 'bg-white text-zinc-950 font-semibold' : 'text-zinc-400 hover:text-white'
+          }`}
+        >
+          <Video className="w-3.5 h-3.5" />
+          <span>Long</span>
+        </button>
+
+        <button
           onClick={() => onSelectTab('schedule')}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-            currentTab === 'schedule'
-              ? 'bg-zinc-800 text-white font-semibold shadow-sm'
-              : 'text-zinc-400 hover:text-white'
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            currentTab === 'schedule' ? 'bg-white text-zinc-950 font-semibold' : 'text-zinc-400 hover:text-white'
           }`}
         >
           <Calendar className="w-3.5 h-3.5" />
@@ -95,85 +99,56 @@ export const Navbar: React.FC<NavbarProps> = ({
         </button>
 
         <button
-          onClick={() => onSelectTab('longform')}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-            currentTab === 'longform'
-              ? 'bg-purple-900/60 text-purple-200 border border-purple-500/30 font-semibold shadow-sm'
-              : 'text-zinc-400 hover:text-white'
-          }`}
-        >
-          <Video className="w-3.5 h-3.5 text-purple-400" />
-          <span>LongForm</span>
-        </button>
-
-        <button
           onClick={() => onSelectTab('copilot')}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-            currentTab === 'copilot'
-              ? 'bg-zinc-800 text-white font-semibold shadow-sm'
-              : 'text-zinc-400 hover:text-white'
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+            currentTab === 'copilot' ? 'bg-white text-zinc-950 font-semibold' : 'text-zinc-400 hover:text-white'
           }`}
         >
-          <Bot className="w-3.5 h-3.5 text-blue-400" />
-          <span>Copilot</span>
+          <Bot className="w-3.5 h-3.5" />
         </button>
       </nav>
 
-      {/* Right Action Bar: Copilot Toggle & Status */}
-      <div className="flex items-center gap-2.5">
+      {/* Right Action Bar */}
+      <div className="flex items-center gap-2">
         {onOpenCookiesModal && (
           <button
             onClick={onOpenCookiesModal}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-mono transition-all shadow-sm cursor-pointer ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs transition-all cursor-pointer ${
               hasCookies
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
-                : 'bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20'
+                ? 'bg-emerald-500/[0.08] border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/15'
+                : 'bg-amber-500/[0.08] border-amber-500/25 text-amber-300 hover:bg-amber-500/15'
             }`}
-            title="Configure YouTube Cookies Vault (bypasses bot challenges)"
+            title="Configure YouTube Cookies Vault"
           >
             <KeyRound className="w-3.5 h-3.5" />
             <span className="hidden sm:inline font-medium">YT Auth</span>
-            <span className={`text-[9px] px-1 py-0.2 rounded border ${
-              hasCookies
-                ? 'bg-emerald-400/20 text-emerald-200 border-emerald-400/30'
-                : 'bg-amber-400/20 text-amber-200 border-amber-400/30'
-            }`}>
-              {hasCookies ? 'ACTIVE' : 'SETUP'}
-            </span>
+            <span className={`w-1.5 h-1.5 rounded-full ${hasCookies ? 'bg-emerald-400 shadow-[0_0_6px_#10b981]' : 'bg-amber-400 animate-pulse'}`} />
           </button>
         )}
 
         <button
           onClick={onToggleCopilot || (() => onSelectTab('copilot'))}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#111218] hover:bg-[#161722] border border-white/[0.08] text-xs font-mono text-zinc-300 hover:text-white transition-all shadow-sm cursor-pointer group"
-          title="Toggle Master Scheduling Copilot"
+          className="btn-glass flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer group"
+          title="Toggle Studio Copilot"
         >
-          <Bot className="w-3.5 h-3.5 text-blue-400 group-hover:scale-110 transition-transform" />
-          <span className="hidden sm:inline font-medium">Copilot</span>
-          <span className="text-[9px] px-1 py-0.2 rounded bg-blue-500/10 border border-blue-500/20 text-blue-400">
-            AI
-          </span>
+          <Bot className="w-3.5 h-3.5 text-cyan-300 group-hover:scale-110 transition-transform" />
+          <span className="hidden sm:inline">Copilot</span>
         </button>
 
         {hasFfmpegIssue ? (
           <div
             title={health?.ffmpeg.message}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-rose-500/10 border border-rose-500/25 text-rose-400 text-[11px] font-medium"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-[11px] font-mono"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-            <span>FFmpeg Missing</span>
+            <span className="hidden md:inline">FFmpeg Off</span>
           </div>
         ) : (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#111218] border border-white/[0.06] text-zinc-400 text-[11px] font-mono">
+          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.07] text-zinc-400 text-[11px] font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#10b981]" />
-            <span className="text-zinc-300">Studio Ready</span>
+            <span>Ready</span>
           </div>
         )}
-
-        <div className="hidden md:flex items-center gap-1 text-[10px] font-mono text-zinc-500 px-2 py-1 rounded bg-[#111218] border border-white/[0.04]">
-          <Terminal className="w-3 h-3 text-zinc-600" />
-          <span>3001</span>
-        </div>
       </div>
     </header>
   );

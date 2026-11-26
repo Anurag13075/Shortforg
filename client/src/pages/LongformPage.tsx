@@ -428,35 +428,33 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
     <div className="space-y-8 animate-fade-in pb-16">
       {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/[0.06] pb-6">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/20">
-              <Film className="w-5 h-5 text-white" />
+        <div className="flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-white/[0.06] border border-white/[0.12] flex items-center justify-center shadow-inner-light">
+            <Film className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight text-white">Long-Form Studio</h1>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.1] text-zinc-300">
+                16:9 1080P
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-violet-500/10 border border-violet-400/25 text-violet-300">
+                -14 LUFS
+              </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-white">Long-Form Video Studio</h1>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/30 text-purple-300 font-semibold tracking-wide">
-                  16:9 1080P MASTER
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-semibold">
-                  GTA 6 READY
-                </span>
-              </div>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Synthesize multiple gameplay videos into high-retention 8-12 min narrative documentaries with AI story arcs, chapter title cards, and -14 LUFS mastering.
-              </p>
-            </div>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Paste multiple YouTube links — AI discovers the unifying story arc and renders a cohesive 1080p documentary.
+            </p>
           </div>
         </div>
 
         {activeProjectId && (
           <button
             onClick={() => setActiveProjectId(null)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors border border-white/[0.08]"
+            className="btn-glass flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            Back to Studio Creator
+            All Projects
           </button>
         )}
       </div>
@@ -653,19 +651,39 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                   )}
                 </div>
 
-                {/* Destination YouTube Channel Quick Indicator */}
-                <div className="flex items-center justify-between pt-3 mt-3 border-t border-white/[0.06]">
+                {/* Destination YouTube Channel & Direct Download Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-3 border-t border-white/[0.06]">
                   <div className="flex items-center gap-2">
                     <Youtube className="w-4 h-4 text-red-500" />
                     <span className="text-xs text-zinc-300 font-medium">Assigned Channel:</span>
                     <span className="text-xs font-bold text-white">
                       {channels.find((c) => c.id === selectedChannelId)?.title || activeProject.channel_title || 'None Selected'}
                     </span>
+                    <span className="text-[11px] text-zinc-500 font-mono ml-2">
+                      • {activeProject.chapters?.length || 0} Chapters
+                    </span>
                   </div>
 
-                  <span className="text-[11px] text-zinc-500 font-mono">
-                    {activeProject.chapters?.length || 0} Narrative Chapters
-                  </span>
+                  {activeProject.status === 'completed' && activeProject.video_path && (
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={api.getLongformThumbnailUrl(activeProject.id)}
+                        download={`${(activeProject.title || 'thumbnail').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)}.jpg`}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/[0.06] hover:bg-white/[0.12] text-zinc-200 border border-white/[0.1] transition-colors"
+                      >
+                        <ImageIcon className="w-3.5 h-3.5 text-amber-400" />
+                        Download Thumbnail
+                      </a>
+                      <a
+                        href={api.getLongformDownloadUrl(activeProject.id)}
+                        download
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-sm shadow-emerald-500/20"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Download 1080p Video
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1120,10 +1138,10 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
         /* ==================================================================== */
         <div className="space-y-10">
           {/* Creator Deck */}
-          <div className="studio-card p-6 sm:p-8 border-white/[0.08] relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
+          <div className="glass-deck rounded-3xl p-6 sm:p-8 relative overflow-hidden">
+            <div className="aurora-glow-edge absolute -bottom-8 left-1/2 -translate-x-1/2 w-[85%] h-24 animate-aurora" />
 
-            <div className="max-w-3xl space-y-6">
+            <div className="relative z-10 max-w-3xl space-y-6">
               <div>
                 <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-purple-400" />
@@ -1243,10 +1261,10 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full py-3 rounded-xl font-bold text-xs bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white transition-all shadow-lg shadow-purple-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="btn-primary w-full py-3 rounded-xl text-xs flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <Sparkles className="w-4 h-4" />
-                  {isSubmitting ? 'Initializing Documentary Engine...' : 'Synthesize Long-Form Video Now'}
+                  {isSubmitting ? 'Initializing Documentary Engine...' : 'Synthesize Long-Form Video'}
                 </button>
               </form>
             </div>

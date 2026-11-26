@@ -20,23 +20,23 @@ export const ToastContainer: React.FC<ToastProps> = ({ toasts, onDismiss }) => {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`pointer-events-auto flex items-center justify-between p-3.5 rounded-xl shadow-2xl border backdrop-blur-xl transition-all duration-300 animate-slide-up ${
+          className={`pointer-events-auto relative overflow-hidden flex items-center justify-between p-3.5 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] border backdrop-blur-2xl transition-all duration-300 animate-slide-up ${
             toast.type === 'success'
-              ? 'bg-emerald-950/80 border-emerald-500/30 text-emerald-200'
+              ? 'bg-[#0b1310]/90 border-emerald-500/30 text-emerald-100'
               : toast.type === 'error'
-              ? 'bg-rose-950/80 border-rose-500/30 text-rose-200'
-              : 'bg-zinc-900/90 border-white/10 text-zinc-100'
+              ? 'bg-[#160b0e]/90 border-rose-500/30 text-rose-100'
+              : 'bg-[#0e0e13]/95 border-white/[0.12] text-zinc-100'
           }`}
         >
           <div className="flex items-center gap-2.5 min-w-0">
             {toast.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
             {toast.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />}
-            {toast.type === 'info' && <Info className="w-4 h-4 text-blue-400 shrink-0" />}
+            {toast.type === 'info' && <Info className="w-4 h-4 text-zinc-300 shrink-0" />}
             <p className="text-xs font-medium leading-relaxed truncate">{toast.message}</p>
           </div>
           <button
             onClick={() => onDismiss(toast.id)}
-            className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors ml-2 shrink-0"
+            className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors ml-2 shrink-0"
           >
             <X className="w-3.5 h-3.5" />
           </button>
