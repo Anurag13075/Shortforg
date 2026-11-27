@@ -18,6 +18,8 @@ if (fs.existsSync(rootEnvPath)) {
   dotenv.config();
 }
 
+const hasPersistentMount = fs.existsSync('/mnt/storage');
+
 export const CONFIG = {
   PORT: parseInt((process.env.PORT || '3001').trim(), 10),
   APP_URL: (process.env.APP_URL || 'http://localhost:5173').trim().replace(/\/$/, ''),
@@ -26,10 +28,10 @@ export const CONFIG = {
   GOOGLE_CLIENT_ID: (process.env.GOOGLE_CLIENT_ID || '').trim(),
   GOOGLE_CLIENT_SECRET: (process.env.GOOGLE_CLIENT_SECRET || '').trim(),
 
-  // Storage and directories
-  STORAGE_DIR: (process.env.STORAGE_DIR || path.resolve(__dirname, '../storage')).trim(),
-  DATA_DIR: (process.env.DATA_DIR || path.resolve(__dirname, '../data')).trim(),
-  DB_PATH: (process.env.DB_PATH || path.resolve(__dirname, '../data/shortsforge.db')).trim(),
+  // Storage and directories (auto-uses /mnt/storage when Zerops Local Storage is mounted)
+  STORAGE_DIR: (process.env.STORAGE_DIR || (hasPersistentMount ? '/mnt/storage/videos' : path.resolve(__dirname, '../storage'))).trim(),
+  DATA_DIR: (process.env.DATA_DIR || (hasPersistentMount ? '/mnt/storage/data' : path.resolve(__dirname, '../data'))).trim(),
+  DB_PATH: (process.env.DB_PATH || (hasPersistentMount ? '/mnt/storage/data/shortsforge.db' : path.resolve(__dirname, '../data/shortsforge.db'))).trim(),
 
   // YouTube OAuth redirect URL
   get GOOGLE_REDIRECT_URI() {
