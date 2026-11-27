@@ -27,9 +27,16 @@ zerops:
         - fc-cache -f 2>/dev/null || true
         - python3 -m pip install --no-cache-dir --break-system-packages -U yt-dlp yt-dlp-ejs || pip3 install --no-cache-dir -U yt-dlp yt-dlp-ejs || apk add --no-cache yt-dlp || true
       start: node server/dist/index.js
+      volume:
+        hostname: storage
+        mountPath: /mnt/storage
+        readOnly: false
       ports:
         - port: 3001
           httpSupport: true
       envVariables:
         NODE_ENV: production
         PORT: 3001
+        STORAGE_DIR: /mnt/storage/videos
+        DATA_DIR: /mnt/storage/data
+        DB_PATH: /mnt/storage/data/shortsforge.db
