@@ -519,13 +519,13 @@ export const api = {
     }),
 
   scheduleLongformProject: (id: string, channelId: string, scheduledTime?: string, publishNow: boolean = false) =>
-    request<{ success: boolean; data: LongformProject; message: string }>(`/api/longform/${id}/schedule`, {
+    request<LongformProject>(`/api/longform/${id}/schedule`, {
       method: 'POST',
       body: JSON.stringify({ channel_id: channelId, scheduled_time: scheduledTime, publish_now: publishNow })
     }),
 
   cancelLongformSchedule: (id: string) =>
-    request<{ success: boolean; data: LongformProject; message: string }>(`/api/longform/${id}/cancel-schedule`, {
+    request<LongformProject>(`/api/longform/${id}/cancel-schedule`, {
       method: 'POST'
     }),
 

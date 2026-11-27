@@ -98,6 +98,23 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
     return () => clearInterval(interval);
   }, []);
 
+  // Poll activeProject while uploading to YouTube
+  useEffect(() => {
+    if (!activeProjectId || activeProject?.schedule_status !== 'posting') return;
+    const poll = setInterval(async () => {
+      try {
+        const updated = await api.getLongformProject(activeProjectId);
+        setActiveProject(updated);
+        if (updated.schedule_status === 'posted') {
+          onToast('🏆 Long-form video published to YouTube!', 'success');
+        } else if (updated.schedule_status === 'failed') {
+          onToast(`YouTube upload failed: ${updated.error_message || 'Unknown error'}`, 'error');
+        }
+      } catch {}
+    }, 4000);
+    return () => clearInterval(poll);
+  }, [activeProjectId, activeProject?.schedule_status]);
+
   // When activeProjectId changes, fetch detailed project and subscribe to SSE
   useEffect(() => {
     setVideoFileMissing(false);
@@ -335,15 +352,20 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
     }
     setIsScheduling(true);
     try {
-      const res = await api.scheduleLongformProject(
+      const updatedProj = await api.scheduleLongformProject(
         activeProjectId,
         selectedChannelId,
         isImmediate ? undefined : new Date(scheduledDateTime).toISOString(),
         isImmediate
       );
-      onToast(res.message, 'success');
-      if (res.data) {
-        setActiveProject(res.data);
+      onToast(
+        isImmediate
+          ? '🚀 Uploading 1080p video & thumbnail to YouTube now!'
+          : `⏰ Scheduled for ${new Date(scheduledDateTime).toLocaleString('en-IN')}`,
+        'success'
+      );
+      if (updatedProj && updatedProj.id) {
+        setActiveProject(isImmediate ? { ...updatedProj, schedule_status: 'posting' } : updatedProj);
       }
     } catch (err: any) {
       onToast(`Scheduling failed: ${err.message}`, 'error');
@@ -355,10 +377,10 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
   const handleCancelSchedule = async () => {
     if (!activeProjectId) return;
     try {
-      const res = await api.cancelLongformSchedule(activeProjectId);
+      const updatedProj = await api.cancelLongformSchedule(activeProjectId);
       onToast('Scheduled upload cancelled', 'info');
-      if (res.data) {
-        setActiveProject(res.data);
+      if (updatedProj && updatedProj.id) {
+        setActiveProject(updatedProj);
       }
     } catch (err: any) {
       onToast(`Cancel failed: ${err.message}`, 'error');
@@ -832,8 +854,21 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                   </div>
                 )}
 
+                {/* Case 2C: Currently Uploading to YouTube */}
+                {activeProject.schedule_status === 'posting' && (
+                  <div className="p-4 rounded-xl bg-indigo-950/35 border border-indigo-500/35 flex items-center gap-3">
+                    <RefreshCw className="w-4 h-4 text-indigo-400 animate-spin shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-indigo-200">Uploading 1080p Video & Custom Thumbnail to YouTube...</p>
+                      <p className="text-[11px] font-mono text-zinc-400 mt-0.5">
+                        Large 1080p files can take 30–90 seconds. This status updates automatically when live.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Case 3: Video Ready - Configure Date/Time or Instant Upload */}
-                {activeProject.status === 'completed' && activeProject.schedule_status !== 'posted' && (
+                {activeProject.status === 'completed' && activeProject.schedule_status !== 'posted' && activeProject.schedule_status !== 'posting' && (
                   <div className="space-y-4">
                     {/* Switcher: Schedule vs Publish Now */}
                     <div className="flex items-center gap-2 flex-wrap">
