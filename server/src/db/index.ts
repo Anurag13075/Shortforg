@@ -24,8 +24,14 @@ if (fs.existsSync(CONFIG.DB_PATH)) {
   rawDb = new SQL.Database();
 }
 
-function saveDatabase() {
+let saveTimer: NodeJS.Timeout | null = null;
+
+function flushDatabaseSync() {
   if (!rawDb) return;
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
   try {
     const dir = path.dirname(CONFIG.DB_PATH);
     if (!fs.existsSync(dir)) {
@@ -33,11 +39,26 @@ function saveDatabase() {
     }
     const data = rawDb.export();
     const buffer = Buffer.from(data);
-    fs.writeFileSync(CONFIG.DB_PATH, buffer);
+    const tmpPath = `${CONFIG.DB_PATH}.tmp`;
+    fs.writeFileSync(tmpPath, buffer);
+    fs.renameSync(tmpPath, CONFIG.DB_PATH);
   } catch (err: any) {
     console.error('Failed to save SQLite database to disk:', err.message);
   }
 }
+
+function saveDatabase() {
+  if (!rawDb) return;
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    flushDatabaseSync();
+  }, 500);
+}
+
+process.on('exit', () => flushDatabaseSync());
+process.on('SIGINT', () => { flushDatabaseSync(); process.exit(0); });
+process.on('SIGTERM', () => { flushDatabaseSync(); process.exit(0); });
 
 class StatementWrapper {
   constructor(private sql: string) {}
@@ -248,6 +269,17 @@ export function initDatabase() {
   } catch {}
   try {
     db.exec("ALTER TABLE longform_projects ADD COLUMN posted_at TEXT;");
+  } catch {}
+
+  // Recover any jobs stuck in mid-flight states after an unexpected restart
+  try {
+    const now = new Date().toISOString();
+    db.prepare("UPDATE schedule_queue SET status = 'scheduled', updated_at = ? WHERE status = 'posting'").run(now);
+    db.prepare("UPDATE longform_projects SET schedule_status = 'scheduled', updated_at = ? WHERE schedule_status = 'posting'").run(now);
+    db.prepare("UPDATE projects SET status = 'failed', error_message = 'Interrupted by server restart — click Retry to resume.', updated_at = ? WHERE status IN ('downloading', 'transcribing', 'analyzing', 'rendering')").run(now);
+    db.prepare("UPDATE longform_projects SET status = 'failed', error_message = 'Interrupted by server restart — click Retry to resume.', updated_at = ? WHERE status IN ('downloading', 'transcribing', 'scripting', 'rendering')").run(now);
+    db.prepare("UPDATE clips SET status = 'draft', updated_at = ? WHERE status = 'rendering'").run(now);
+    flushDatabaseSync();
   } catch {}
 }
 

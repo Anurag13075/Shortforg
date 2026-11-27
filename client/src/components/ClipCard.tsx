@@ -54,6 +54,7 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
   const [endTime, setEndTime] = useState<number>(clip.end_time);
   const [layout, setLayout] = useState<'blur_bg' | 'crop'>(clip.layout || 'blur_bg');
   const [hookOverlay, setHookOverlay] = useState<boolean>(clip.hook_overlay !== 0);
+  const [mediaMissing, setMediaMissing] = useState<boolean>(false);
 
   const [titleOptions] = useState<string[]>(() => {
     try {
@@ -318,24 +319,27 @@ export const ClipCard: React.FC<ClipCardProps> = ({ clip, channels, onUpdate, on
               </div>
             </div>
           ) : activeTab === 'video' ? (
-            clip.video_path ? (
+            clip.video_path && !mediaMissing ? (
               <video
                 src={api.getVideoUrl(clip.id)}
                 poster={clip.thumbnail_path ? api.getThumbnailUrl(clip.id) : undefined}
+                onError={() => setMediaMissing(true)}
                 controls
                 playsInline
-                preload="auto"
+                preload="metadata"
                 className="w-full h-full object-contain"
               />
             ) : (
-              <div className="flex flex-col items-center gap-2 text-center p-6">
+              <div className="flex flex-col items-center gap-2.5 text-center p-6">
                 <Film className="w-8 h-8 text-zinc-600" />
-                <p className="text-xs text-zinc-400 font-mono">Video pending render</p>
+                <p className="text-xs text-zinc-300 font-medium">
+                  {mediaMissing ? 'Clip file cleared on server restart' : 'Video pending render'}
+                </p>
                 <button
-                  onClick={handleSaveAndRerender}
-                  className="px-3 py-1 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 rounded-lg text-xs font-mono"
+                  onClick={() => { setMediaMissing(false); handleSaveAndRerender(); }}
+                  className="btn-primary px-3.5 py-1.5 rounded-lg text-xs cursor-pointer"
                 >
-                  Render Now
+                  {mediaMissing ? 'Auto-Recover & Render' : 'Render Now'}
                 </button>
               </div>
             )

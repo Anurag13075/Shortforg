@@ -69,12 +69,15 @@ projectsRouter.post('/sync', (req: Request, res: Response) => {
     }
   }
 
-  // Restore clips associated with these projects
+  // Restore clips associated with these projects (including upgrading any dummy 'restored' placeholders)
   if (Array.isArray(clips) && clips.length > 0) {
     for (const c of clips) {
       if (!c.id || !c.project_id) continue;
       try {
-        const existing = db.prepare('SELECT id FROM clips WHERE id = ?').get(c.id);
+        const existing = db.prepare('SELECT id, project_id, video_path FROM clips WHERE id = ?').get(c.id) as
+          | { id: string; project_id: string; video_path: string | null }
+          | undefined;
+
         if (!existing) {
           db.prepare(`
             INSERT INTO clips (
@@ -109,6 +112,40 @@ projectsRouter.post('/sync', (req: Request, res: Response) => {
             c.hook_overlay !== undefined ? c.hook_overlay : 1,
             c.created_at || now,
             c.updated_at || now
+          );
+        } else if (existing.project_id === 'restored' || !existing.video_path) {
+          // Upgrade dummy 'restored' clip created by /schedule/sync with full clip metadata
+          db.prepare(`
+            UPDATE clips SET
+              project_id = ?, title = ?, caption = ?, hashtags = ?, hook_line = ?, virality_score = ?, reason = ?,
+              start_time = ?, end_time = ?, crop_offset_x = ?, video_path = ?, thumbnail_path = ?,
+              caption_preset = ?, caption_active_color = ?, caption_base_color = ?, words_per_burst = ?,
+              assigned_channel_id = ?, title_options = ?, caption_options = ?, layout = ?, hook_overlay = ?, updated_at = ?
+            WHERE id = ?
+          `).run(
+            c.project_id,
+            c.title,
+            c.caption || null,
+            c.hashtags || null,
+            c.hook_line || null,
+            c.virality_score || 85,
+            c.reason || null,
+            c.start_time || 0,
+            c.end_time || 30,
+            c.crop_offset_x || 0,
+            c.video_path || null,
+            c.thumbnail_path || null,
+            c.caption_preset || 'hormozi_gold',
+            c.caption_active_color || '#FFE600',
+            c.caption_base_color || '#FFFFFF',
+            c.words_per_burst || 2,
+            c.assigned_channel_id || null,
+            typeof c.title_options === 'string' ? c.title_options : JSON.stringify(c.title_options || [c.title]),
+            typeof c.caption_options === 'string' ? c.caption_options : JSON.stringify(c.caption_options || [c.caption]),
+            c.layout || 'blur_bg',
+            c.hook_overlay !== undefined ? c.hook_overlay : 1,
+            now,
+            c.id
           );
         }
       } catch (err: any) {

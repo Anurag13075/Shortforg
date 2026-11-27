@@ -182,14 +182,18 @@ scheduleRouter.post('/sync', (req: Request, res: Response) => {
         }
 
         db.prepare(`
-          INSERT INTO schedule_queue (id, clip_id, channel_id, scheduled_time, status, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO schedule_queue (id, clip_id, channel_id, scheduled_time, status, youtube_video_id, retry_count, error_message, posted_at, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           item.id,
           item.clip_id,
           item.channel_id,
           item.scheduled_time || now,
           item.status || 'scheduled',
+          item.youtube_video_id || null,
+          item.retry_count || 0,
+          item.error_message || null,
+          item.posted_at || null,
           item.created_at || now,
           item.updated_at || now
         );

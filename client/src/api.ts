@@ -99,7 +99,7 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ youtubeUrl, niche: niche || 'high_energy' })
   }),
-  uploadVideoFile: async (file: File): Promise<Project> => {
+ uploadVideoFile: async (file: File): Promise<Project> => {
     const res = await fetch(`/api/projects/upload?filename=${encodeURIComponent(file.name)}`, {
       method: 'POST',
       headers: {
@@ -113,9 +113,24 @@ export const api = {
     }
     return json.data !== undefined ? json.data : json;
   },
-  deleteProject: (id: string) => request<{ success: boolean; message: string }>(`/api/projects/${id}`, {
-    method: 'DELETE'
-  }),
+  deleteProject: async (id: string) => {
+    const res = await request<{ success: boolean; message: string }>(`/api/projects/${id}`, {
+      method: 'DELETE'
+    });
+    try {
+      localStorage.removeItem(`sf_project_${id}`);
+      localStorage.removeItem(`sf_clips_${id}`);
+      const pVault = localStorage.getItem('sf_projects_vault');
+      if (pVault) {
+        localStorage.setItem('sf_projects_vault', JSON.stringify(JSON.parse(pVault).filter((p: any) => p.id !== id)));
+      }
+      const cVault = localStorage.getItem('sf_clips_vault_all');
+      if (cVault) {
+        localStorage.setItem('sf_clips_vault_all', JSON.stringify(JSON.parse(cVault).filter((c: any) => c.project_id !== id)));
+      }
+    } catch {}
+    return res;
+  },
   retryProject: (id: string) => request<Project>(`/api/projects/${id}/retry`, {
     method: 'POST'
   }),
@@ -173,10 +188,22 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(updates)
     }),
-  deleteClip: (id: string) =>
-    request<{ success: boolean; message: string }>(`/api/clips/${id}`, {
+  deleteClip: async (id: string) => {
+    const res = await request<{ success: boolean; message: string }>(`/api/clips/${id}`, {
       method: 'DELETE'
-    }),
+    });
+    try {
+      const cVault = localStorage.getItem('sf_clips_vault_all');
+      if (cVault) {
+        localStorage.setItem('sf_clips_vault_all', JSON.stringify(JSON.parse(cVault).filter((c: any) => c.id !== id)));
+      }
+      const qVault = localStorage.getItem('sf_queue_vault');
+      if (qVault) {
+        localStorage.setItem('sf_queue_vault', JSON.stringify(JSON.parse(qVault).filter((q: any) => q.clip_id !== id)));
+      }
+    } catch {}
+    return res;
+  },
   scheduleClipDirect: (id: string, channel_id: string, scheduled_time?: string) =>
     request<QueueItem>(`/api/clips/${id}/schedule`, {
       method: 'POST',
@@ -271,11 +298,15 @@ export const api = {
         } catch {}
         return queue;
       }
-      // If server returned 0 queue items (e.g. after container redeploy), auto-sync from client vault
+      // If server returned 0 queue items (e.g. after container redeploy), sync channels + projects/clips FIRST, then queue!
       const cached = localStorage.getItem('sf_queue_vault');
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          await Promise.all([
+            api.getChannels().catch(() => []),
+            api.getProjects().catch(() => [])
+          ]);
           await request<{ success: boolean; synced: number }>('/api/schedule/sync', {
             method: 'POST',
             body: JSON.stringify({ queue: parsed })
@@ -343,6 +374,9 @@ export const api = {
       try {
         const data = JSON.parse(event.data);
         onUpdate(data);
+        if (data.status === 'completed' || data.status === 'failed') {
+          eventSource.close();
+        }
       } catch (err) {
         console.error('Error parsing SSE data:', err);
       }
@@ -466,8 +500,17 @@ export const api = {
       body: JSON.stringify({ chapters })
     }),
 
-  deleteLongformProject: (id: string) =>
-    request<{ success: boolean; message: string }>(`/api/longform/${id}`, { method: 'DELETE' }),
+  deleteLongformProject: async (id: string) => {
+    const res = await request<{ success: boolean; message: string }>(`/api/longform/${id}`, { method: 'DELETE' });
+    try {
+      localStorage.removeItem(`sf_lf_proj_${id}`);
+      const cached = localStorage.getItem('sf_longform_vault');
+      if (cached) {
+        localStorage.setItem('sf_longform_vault', JSON.stringify(JSON.parse(cached).filter((p: any) => p.id !== id)));
+      }
+    } catch {}
+    return res;
+  },
 
   assignLongformChannel: (id: string, channel_id: string | null) =>
     request<{ success: boolean; message: string }>(`/api/longform/${id}/assign-channel`, {
@@ -507,6 +550,9 @@ export const api = {
       try {
         const data = JSON.parse(event.data);
         callback(data);
+        if (data.status === 'completed' || data.status === 'failed') {
+          eventSource.close();
+        }
       } catch (err) {
         console.error('Failed to parse longform SSE message:', err);
       }
@@ -521,3 +567,5 @@ export const api = {
     };
   }
 };
+
+

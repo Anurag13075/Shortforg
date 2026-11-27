@@ -406,9 +406,40 @@ export class PipelineService {
     const clip = db.prepare('SELECT * FROM clips WHERE id = ?').get(clipId) as ClipRecord | undefined;
     if (!clip) throw new Error(`Clip ${clipId} not found`);
 
-    const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(clip.project_id) as ProjectRecord | undefined;
-    if (!project || !project.source_video_path || !fs.existsSync(project.source_video_path)) {
-      throw new Error('Original source video is missing');
+    let project = db.prepare('SELECT * FROM projects WHERE id = ?').get(clip.project_id) as ProjectRecord | undefined;
+    if (!project) {
+      throw new Error('Parent project not found');
+    }
+
+    const projectDir = path.join(CONFIG.STORAGE_DIR, project.id);
+    if (!fs.existsSync(projectDir)) {
+      fs.mkdirSync(projectDir, { recursive: true });
+    }
+
+    // Auto-recover source video if wiped on server restart
+    if (!project.source_video_path || !fs.existsSync(project.source_video_path)) {
+      if (!project.youtube_url || project.youtube_url.startsWith('file://')) {
+        throw new Error('Original uploaded source video is missing on server.');
+      }
+      const dl = await downloadYouTubeVideo(project.youtube_url, projectDir);
+      db.prepare('UPDATE projects SET source_video_path = ?, updated_at = ? WHERE id = ?')
+        .run(dl.filePath, new Date().toISOString(), project.id);
+      project = { ...project, source_video_path: dl.filePath };
+    }
+
+    // Auto-recover transcript.json if missing (so kinetic subtitles still render!)
+    const transcriptCheckPath = path.join(projectDir, 'transcript.json');
+    if (!fs.existsSync(transcriptCheckPath)) {
+      try {
+        const audioPath = path.join(projectDir, 'audio_extracted.mp3');
+        if (!fs.existsSync(audioPath)) {
+          await FFmpegService.extractAudio(project.source_video_path!, audioPath);
+        }
+        const trans = await transcribeAudio(audioPath);
+        fs.writeFileSync(transcriptCheckPath, JSON.stringify(trans, null, 2), 'utf-8');
+      } catch (transErr: any) {
+        console.warn('Could not auto-recover transcript.json:', transErr.message);
+      }
     }
 
     const opts: ReRenderOptions = typeof options === 'number' ? { cropOffsetX: options } : (options || {});
@@ -422,8 +453,6 @@ export class PipelineService {
     const captionActiveColor = opts.captionActiveColor || clip.caption_active_color || '#FFE600';
     const captionBaseColor = opts.captionBaseColor || clip.caption_base_color || '#FFFFFF';
     const wordsPerBurst = opts.wordsPerBurst || clip.words_per_burst || 2;
-
-    const projectDir = path.dirname(clip.video_path || path.join(CONFIG.STORAGE_DIR, clip.project_id, 'file.mp4'));
 
     // Update status to rendering
     db.prepare(`
