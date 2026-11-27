@@ -87,6 +87,7 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
   });
   const [publishNow, setPublishNow] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
+  const [videoFileMissing, setVideoFileMissing] = useState(false);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -99,6 +100,7 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
 
   // When activeProjectId changes, fetch detailed project and subscribe to SSE
   useEffect(() => {
+    setVideoFileMissing(false);
     if (!activeProjectId) {
       setActiveProject(null);
       return;
@@ -363,6 +365,27 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
     }
   };
 
+  const handleDownloadMaster = async () => {
+    if (!activeProjectId) return;
+    const url = api.getLongformDownloadUrl(activeProjectId);
+    try {
+      const res = await fetch(url, { method: 'HEAD' });
+      if (!res.ok) {
+        setVideoFileMissing(true);
+        onToast('Video file is missing on server disk (cleared on restart). Click "Re-Synthesize Video" to rebuild it.', 'error');
+        return;
+      }
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {
+      onToast('Could not reach download endpoint', 'error');
+    }
+  };
+
   const applyTimePreset = (option: 'today_6pm' | 'tmrw_10am' | 'tmrw_6pm' | 'in_2d_6pm') => {
     const d = new Date();
     if (option === 'today_6pm') {
@@ -591,14 +614,33 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                 <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black flex items-center justify-center border border-white/[0.08]">
                   {activeProject.video_path && activeProject.status === 'completed' ? (
                     previewMode === 'video' ? (
-                      <video
-                        controls
-                        playsInline
-                        poster={api.getLongformThumbnailUrl(activeProject.id)}
-                        src={api.getLongformVideoUrl(activeProject.id)}
-                        className="w-full h-full object-contain"
-                        preload="auto"
-                      />
+                      videoFileMissing ? (
+                        <div className="flex flex-col items-center justify-center p-8 text-center space-y-3">
+                          <AlertCircle className="w-10 h-10 text-amber-400" />
+                          <p className="text-xs text-white font-semibold">Master video file missing on server disk</p>
+                          <p className="text-[11px] text-zinc-400 font-mono max-w-md">
+                            Container storage restarted after this video was built. Rebuild it in one click to download or upload.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => { setVideoFileMissing(false); handleRetry(); }}
+                            className="btn-primary px-4 py-2 rounded-xl text-xs flex items-center gap-2 cursor-pointer"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            Re-Synthesize Video
+                          </button>
+                        </div>
+                      ) : (
+                        <video
+                          controls
+                          playsInline
+                          poster={api.getLongformThumbnailUrl(activeProject.id)}
+                          src={api.getLongformVideoUrl(activeProject.id)}
+                          onError={() => setVideoFileMissing(true)}
+                          className="w-full h-full object-contain"
+                          preload="metadata"
+                        />
+                      )
                     ) : (
                       <div className="relative w-full h-full group/thumb">
                         <img
@@ -674,14 +716,14 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                         <ImageIcon className="w-3.5 h-3.5 text-amber-400" />
                         Download Thumbnail
                       </a>
-                      <a
-                        href={api.getLongformDownloadUrl(activeProject.id)}
-                        download
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-sm shadow-emerald-500/20"
+                      <button
+                        type="button"
+                        onClick={handleDownloadMaster}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-sm shadow-emerald-500/20 cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" />
                         Download 1080p Video
-                      </a>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -764,6 +806,29 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                         </span>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Case 2B: Upload Failed */}
+                {activeProject.schedule_status === 'failed' && (
+                  <div className="p-4 rounded-xl bg-rose-950/35 border border-rose-500/35 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 text-xs font-bold text-rose-300">
+                        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                        YouTube Upload Failed
+                      </div>
+                      <p className="text-[11px] font-mono text-rose-200/80 break-words">
+                        {activeProject.error_message || 'Upload error — click Retry or Re-Synthesize below.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setVideoFileMissing(false); handleRetry(); }}
+                      className="btn-glass px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Re-Synthesize
+                    </button>
                   </div>
                 )}
 

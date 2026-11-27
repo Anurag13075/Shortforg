@@ -5,6 +5,7 @@ import { db, QueueRecord, ClipRecord, ProjectRecord, LongformProjectRecord, Long
 import { YouTubeService } from './youtube.js';
 import { downloadYouTubeVideo } from './downloader.js';
 import { PipelineService } from './pipeline.js';
+import { LongformPipelineService } from './longformPipeline.js';
 import { CONFIG } from '../config.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -324,13 +325,32 @@ export class SchedulerService {
       .run(now, proj.id);
 
     try {
-      const videoFullPath = path.isAbsolute(proj.video_path!)
+      let videoFullPath = path.isAbsolute(proj.video_path!)
         ? proj.video_path!
         : path.join(CONFIG.STORAGE_DIR, proj.video_path!);
 
-      const thumbFullPath = proj.thumbnail_path
+      let thumbFullPath = proj.thumbnail_path
         ? (path.isAbsolute(proj.thumbnail_path) ? proj.thumbnail_path : path.join(CONFIG.STORAGE_DIR, proj.thumbnail_path))
         : null;
+
+      // Auto-recover longform master video if wiped by container restart
+      if (!fs.existsSync(videoFullPath)) {
+        console.warn(`⚠️ Scheduled Long-Form Video "${proj.title || proj.topic}" missing on disk (${videoFullPath}). Auto-recovering...`);
+        await LongformPipelineService.runPipeline(proj.id);
+        const refreshed = db.prepare('SELECT * FROM longform_projects WHERE id = ?').get(proj.id) as LongformProjectRecord | undefined;
+        if (!refreshed || refreshed.status !== 'completed' || !refreshed.video_path) {
+          throw new Error(refreshed?.error_message || 'Auto-recovery synthesis failed');
+        }
+        videoFullPath = path.isAbsolute(refreshed.video_path)
+          ? refreshed.video_path
+          : path.join(CONFIG.STORAGE_DIR, refreshed.video_path);
+        thumbFullPath = refreshed.thumbnail_path
+          ? (path.isAbsolute(refreshed.thumbnail_path) ? refreshed.thumbnail_path : path.join(CONFIG.STORAGE_DIR, refreshed.thumbnail_path))
+          : null;
+        if (!fs.existsSync(videoFullPath)) {
+          throw new Error('Auto-recovery completed but master video file is still missing.');
+        }
+      }
 
       // Generate description with timestamps from chapters
       let chapters: LongformChapter[] = [];

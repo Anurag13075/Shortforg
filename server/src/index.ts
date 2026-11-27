@@ -94,7 +94,9 @@ app.get('/api/health', (_req, res) => {
       hasGroq: Boolean(CONFIG.GROQ_API_KEY),
       hasGoogleOAuth: Boolean(CONFIG.GOOGLE_CLIENT_ID && CONFIG.GOOGLE_CLIENT_SECRET),
       appUrl: CONFIG.APP_URL,
-      googleRedirectUri: CONFIG.GOOGLE_REDIRECT_URI
+      googleRedirectUri: CONFIG.GOOGLE_REDIRECT_URI,
+      storageDir: CONFIG.STORAGE_DIR,
+      mntDirs: fs.existsSync('/mnt') ? fs.readdirSync('/mnt') : []
     }
   });
 });
