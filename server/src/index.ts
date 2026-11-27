@@ -4,9 +4,10 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { CONFIG } from './config.js';
-import { initDatabase } from './db/index.js';
+import { initDatabase, isPostgresActive } from './db/index.js';
 import { FFmpegService } from './services/ffmpeg.js';
 import { SchedulerService } from './services/scheduler.js';
+import { ObjectStorageService } from './services/objectStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,7 +97,9 @@ app.get('/api/health', (_req, res) => {
       appUrl: CONFIG.APP_URL,
       googleRedirectUri: CONFIG.GOOGLE_REDIRECT_URI,
       storageDir: CONFIG.STORAGE_DIR,
-      mntDirs: fs.existsSync('/mnt') ? fs.readdirSync('/mnt') : []
+      mntDirs: fs.existsSync('/mnt') ? fs.readdirSync('/mnt') : [],
+      postgres: isPostgresActive(),
+      objectStorage: ObjectStorageService.isEnabled()
     }
   });
 });
@@ -164,6 +167,19 @@ if (fs.existsSync(clientDist)) {
 // ----------------------------------------------------------------------------
 SchedulerService.startScheduler();
 ensureLatestYtDlp().catch(() => {});
+if (ObjectStorageService.isEnabled()) {
+  const cookiePath = path.join(CONFIG.STORAGE_DIR, 'cookies.txt');
+  if (!fs.existsSync(cookiePath)) {
+    ObjectStorageService.downloadText('system/cookies.txt')
+      .then((txt) => {
+        if (txt && txt.trim().length > 20) {
+          fs.writeFileSync(cookiePath, txt.trim(), 'utf-8');
+          console.log('🍪 Restored cookies.txt from Object Storage');
+        }
+      })
+      .catch(() => {});
+  }
+}
 
 app.listen(CONFIG.PORT, () => {
   console.log(`🚀 ShortsForge Backend running on http://localhost:${CONFIG.PORT}`);

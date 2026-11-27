@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, ClipRecord, ChannelRecord } from '../db/index.js';
 import { PipelineService } from '../services/pipeline.js';
 import { regenerateClipMetadata } from '../services/momentPicker.js';
+import { ObjectStorageService } from '../services/objectStorage.js';
 import { CONFIG } from '../config.js';
 
 export const clipsRouter = Router();
@@ -300,10 +301,19 @@ clipsRouter.post('/:id/regenerate-metadata', async (req: Request, res: Response)
 /**
  * GET /api/clips/:id/video - Stream MP4 video with range request support for video scrubbing
  */
-clipsRouter.get('/:id/video', (req: Request, res: Response) => {
+clipsRouter.get('/:id/video', async (req: Request, res: Response) => {
   try {
     const clip = db.prepare('SELECT video_path FROM clips WHERE id = ?').get(req.params.id) as { video_path: string } | undefined;
-    if (!clip || !clip.video_path || !fs.existsSync(clip.video_path)) {
+    if (!clip || !clip.video_path) {
+      return res.status(404).json({ success: false, error: 'Video file not ready or missing' });
+    }
+
+    if (ObjectStorageService.isS3Uri(clip.video_path)) {
+      await ObjectStorageService.streamVideoToResponse(clip.video_path, req, res);
+      return;
+    }
+
+    if (!fs.existsSync(clip.video_path)) {
       return res.status(404).json({ success: false, error: 'Video file not ready or missing' });
     }
 
@@ -355,10 +365,19 @@ clipsRouter.get('/:id/video', (req: Request, res: Response) => {
 /**
  * GET /api/clips/:id/thumbnail - Serve generated thumbnail image
  */
-clipsRouter.get('/:id/thumbnail', (req: Request, res: Response) => {
+clipsRouter.get('/:id/thumbnail', async (req: Request, res: Response) => {
   try {
     const clip = db.prepare('SELECT thumbnail_path FROM clips WHERE id = ?').get(req.params.id) as { thumbnail_path: string } | undefined;
-    if (!clip || !clip.thumbnail_path || !fs.existsSync(clip.thumbnail_path)) {
+    if (!clip || !clip.thumbnail_path) {
+      return res.status(404).send('Thumbnail not found');
+    }
+
+    if (ObjectStorageService.isS3Uri(clip.thumbnail_path)) {
+      await ObjectStorageService.streamImageToResponse(clip.thumbnail_path, res);
+      return;
+    }
+
+    if (!fs.existsSync(clip.thumbnail_path)) {
       return res.status(404).send('Thumbnail not found');
     }
 
@@ -395,14 +414,23 @@ clipsRouter.delete('/:id', (req: Request, res: Response) => {
 /**
  * GET /api/clips/:id/download - Force file download of finished Short
  */
-clipsRouter.get('/:id/download', (req: Request, res: Response) => {
+clipsRouter.get('/:id/download', async (req: Request, res: Response) => {
   try {
     const clip = db.prepare('SELECT * FROM clips WHERE id = ?').get(req.params.id) as ClipRecord | undefined;
-    if (!clip || !clip.video_path || !fs.existsSync(clip.video_path)) {
+    if (!clip || !clip.video_path) {
       return res.status(404).json({ success: false, error: 'Video file not available for download' });
     }
 
     const cleanFilename = `${clip.title.replace(/[^a-zA-Z0-9_-]/g, '_')}_ShortsForge.mp4`;
+    if (ObjectStorageService.isS3Uri(clip.video_path)) {
+      await ObjectStorageService.streamVideoToResponse(clip.video_path, req, res, cleanFilename);
+      return;
+    }
+
+    if (!fs.existsSync(clip.video_path)) {
+      return res.status(404).json({ success: false, error: 'Video file not available for download' });
+    }
+
     res.download(clip.video_path, cleanFilename);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });

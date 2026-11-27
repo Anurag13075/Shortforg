@@ -1,11 +1,13 @@
 import cron from 'node-cron';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { db, QueueRecord, ClipRecord, ProjectRecord, LongformProjectRecord, LongformChapter } from '../db/index.js';
 import { YouTubeService } from './youtube.js';
 import { downloadYouTubeVideo } from './downloader.js';
 import { PipelineService } from './pipeline.js';
 import { LongformPipelineService } from './longformPipeline.js';
+import { ObjectStorageService } from './objectStorage.js';
 import { CONFIG } from '../config.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -88,6 +90,24 @@ export class SchedulerService {
 
       let videoPath = item.video_path;
       let thumbnailPath = item.thumbnail_path;
+      const tempFiles: string[] = [];
+
+      if (ObjectStorageService.isS3Uri(videoPath)) {
+        const tmpVid = path.join(os.tmpdir(), `sf_upload_${item.clip_id}_${Date.now()}.mp4`);
+        await ObjectStorageService.downloadToFile(videoPath!, tmpVid);
+        tempFiles.push(tmpVid);
+        videoPath = tmpVid;
+        if (ObjectStorageService.isS3Uri(thumbnailPath)) {
+          const tmpThumb = path.join(os.tmpdir(), `sf_thumb_${item.clip_id}_${Date.now()}.jpg`);
+          await ObjectStorageService.downloadToFile(thumbnailPath!, tmpThumb).catch(() => {});
+          if (fs.existsSync(tmpThumb)) {
+            tempFiles.push(tmpThumb);
+            thumbnailPath = tmpThumb;
+          } else {
+            thumbnailPath = null;
+          }
+        }
+      }
 
       // Auto-recover clip file if wiped by container restart/redeploy
       if (!videoPath || !fs.existsSync(videoPath)) {
@@ -118,23 +138,49 @@ export class SchedulerService {
         // Re-render the clip & thumbnail
         console.log(`🎬 Re-rendering scheduled Short "${clip.title}"...`);
         const recoveredClip = await PipelineService.reRenderClip(clip.id);
-        if (!recoveredClip.video_path || !fs.existsSync(recoveredClip.video_path)) {
+        if (!recoveredClip.video_path) {
           throw new Error('Auto-recovery re-render did not produce a valid video file.');
         }
-        videoPath = recoveredClip.video_path;
-        thumbnailPath = recoveredClip.thumbnail_path;
+        if (ObjectStorageService.isS3Uri(recoveredClip.video_path)) {
+          const tmpVid = path.join(os.tmpdir(), `sf_rec_${clip.id}_${Date.now()}.mp4`);
+          await ObjectStorageService.downloadToFile(recoveredClip.video_path, tmpVid);
+          tempFiles.push(tmpVid);
+          videoPath = tmpVid;
+          thumbnailPath = null;
+          if (ObjectStorageService.isS3Uri(recoveredClip.thumbnail_path)) {
+            const tmpThumb = path.join(os.tmpdir(), `sf_recthumb_${clip.id}_${Date.now()}.jpg`);
+            await ObjectStorageService.downloadToFile(recoveredClip.thumbnail_path!, tmpThumb).catch(() => {});
+            if (fs.existsSync(tmpThumb)) {
+              tempFiles.push(tmpThumb);
+              thumbnailPath = tmpThumb;
+            }
+          }
+        } else {
+          if (!fs.existsSync(recoveredClip.video_path)) {
+            throw new Error('Auto-recovery re-render did not produce a valid video file.');
+          }
+          videoPath = recoveredClip.video_path;
+          thumbnailPath = recoveredClip.thumbnail_path;
+        }
       }
 
       console.log(`🚀 Uploading Short "${item.clip_title}" to YouTube channel ${item.channel_id}...`);
 
-      const result = await YouTubeService.uploadShort({
-        channelId: item.channel_id,
-        videoPath,
-        thumbnailPath,
-        title: item.clip_title,
-        caption: item.caption,
-        hashtags: parsedHashtags
-      });
+      let result: { videoId: string; videoUrl: string };
+      try {
+        result = await YouTubeService.uploadShort({
+          channelId: item.channel_id,
+          videoPath,
+          thumbnailPath,
+          title: item.clip_title,
+          caption: item.caption,
+          hashtags: parsedHashtags
+        });
+      } finally {
+        for (const f of tempFiles) {
+          try { fs.unlinkSync(f); } catch {}
+        }
+      }
 
       // Mark posted
       db.prepare(`
@@ -324,14 +370,34 @@ export class SchedulerService {
     db.prepare("UPDATE longform_projects SET schedule_status = 'posting', updated_at = ? WHERE id = ?")
       .run(now, proj.id);
 
+    const tempFiles: string[] = [];
     try {
-      let videoFullPath = path.isAbsolute(proj.video_path!)
+      let videoFullPath = ObjectStorageService.isS3Uri(proj.video_path)
         ? proj.video_path!
-        : path.join(CONFIG.STORAGE_DIR, proj.video_path!);
+        : (path.isAbsolute(proj.video_path!) ? proj.video_path! : path.join(CONFIG.STORAGE_DIR, proj.video_path!));
 
-      let thumbFullPath = proj.thumbnail_path
-        ? (path.isAbsolute(proj.thumbnail_path) ? proj.thumbnail_path : path.join(CONFIG.STORAGE_DIR, proj.thumbnail_path))
+      let thumbFullPath: string | null = proj.thumbnail_path
+        ? (ObjectStorageService.isS3Uri(proj.thumbnail_path)
+            ? proj.thumbnail_path
+            : (path.isAbsolute(proj.thumbnail_path) ? proj.thumbnail_path : path.join(CONFIG.STORAGE_DIR, proj.thumbnail_path)))
         : null;
+
+      if (ObjectStorageService.isS3Uri(videoFullPath)) {
+        const tmpVid = path.join(os.tmpdir(), `sf_lf_${proj.id}_${Date.now()}.mp4`);
+        await ObjectStorageService.downloadToFile(videoFullPath, tmpVid);
+        tempFiles.push(tmpVid);
+        videoFullPath = tmpVid;
+        if (ObjectStorageService.isS3Uri(thumbFullPath)) {
+          const tmpThumb = path.join(os.tmpdir(), `sf_lf_thumb_${proj.id}_${Date.now()}.jpg`);
+          await ObjectStorageService.downloadToFile(thumbFullPath!, tmpThumb).catch(() => {});
+          if (fs.existsSync(tmpThumb)) {
+            tempFiles.push(tmpThumb);
+            thumbFullPath = tmpThumb;
+          } else {
+            thumbFullPath = null;
+          }
+        }
+      }
 
       // Auto-recover longform master video if wiped by container restart
       if (!fs.existsSync(videoFullPath)) {
@@ -341,14 +407,30 @@ export class SchedulerService {
         if (!refreshed || refreshed.status !== 'completed' || !refreshed.video_path) {
           throw new Error(refreshed?.error_message || 'Auto-recovery synthesis failed');
         }
-        videoFullPath = path.isAbsolute(refreshed.video_path)
-          ? refreshed.video_path
-          : path.join(CONFIG.STORAGE_DIR, refreshed.video_path);
-        thumbFullPath = refreshed.thumbnail_path
-          ? (path.isAbsolute(refreshed.thumbnail_path) ? refreshed.thumbnail_path : path.join(CONFIG.STORAGE_DIR, refreshed.thumbnail_path))
-          : null;
-        if (!fs.existsSync(videoFullPath)) {
-          throw new Error('Auto-recovery completed but master video file is still missing.');
+        if (ObjectStorageService.isS3Uri(refreshed.video_path)) {
+          const tmpVid = path.join(os.tmpdir(), `sf_lf_rec_${proj.id}_${Date.now()}.mp4`);
+          await ObjectStorageService.downloadToFile(refreshed.video_path, tmpVid);
+          tempFiles.push(tmpVid);
+          videoFullPath = tmpVid;
+          thumbFullPath = null;
+          if (ObjectStorageService.isS3Uri(refreshed.thumbnail_path)) {
+            const tmpThumb = path.join(os.tmpdir(), `sf_lf_recthumb_${proj.id}_${Date.now()}.jpg`);
+            await ObjectStorageService.downloadToFile(refreshed.thumbnail_path!, tmpThumb).catch(() => {});
+            if (fs.existsSync(tmpThumb)) {
+              tempFiles.push(tmpThumb);
+              thumbFullPath = tmpThumb;
+            }
+          }
+        } else {
+          videoFullPath = path.isAbsolute(refreshed.video_path)
+            ? refreshed.video_path
+            : path.join(CONFIG.STORAGE_DIR, refreshed.video_path);
+          thumbFullPath = refreshed.thumbnail_path
+            ? (path.isAbsolute(refreshed.thumbnail_path) ? refreshed.thumbnail_path : path.join(CONFIG.STORAGE_DIR, refreshed.thumbnail_path))
+            : null;
+          if (!fs.existsSync(videoFullPath)) {
+            throw new Error('Auto-recovery completed but master video file is still missing.');
+          }
         }
       }
 
@@ -399,6 +481,10 @@ export class SchedulerService {
             updated_at = ?
         WHERE id = ?
       `).run(`Upload failed: ${err.message}`, new Date().toISOString(), proj.id);
+    } finally {
+      for (const f of tempFiles) {
+        try { fs.unlinkSync(f); } catch {}
+      }
     }
   }
 }

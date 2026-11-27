@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, ProjectRecord, ClipRecord } from '../db/index.js';
 import { PipelineService } from '../services/pipeline.js';
 import { FFmpegService } from '../services/ffmpeg.js';
+import { ObjectStorageService } from '../services/objectStorage.js';
 import { CONFIG } from '../config.js';
 import fs from 'fs';
 import path from 'path';
@@ -377,6 +378,9 @@ projectsRouter.delete('/:id', (req: Request, res: Response) => {
       if (fs.existsSync(projectDir)) {
         fs.rmSync(projectDir, { recursive: true, force: true });
       }
+    }
+    if (ObjectStorageService.isEnabled()) {
+      ObjectStorageService.deletePrefix(`projects/${projectId}/`).catch(() => {});
     }
 
     res.json({ success: true, message: 'Project deleted successfully' });

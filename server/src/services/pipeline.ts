@@ -8,6 +8,7 @@ import { FFmpegService } from './ffmpeg.js';
 import { transcribeAudio } from './transcriber.js';
 import { pickViralMoments, ViralMoment } from './momentPicker.js';
 import { generateAssSubtitles, CaptionPreset } from './subtitleGenerator.js';
+import { ObjectStorageService } from './objectStorage.js';
 
 export interface LogEntry {
   timestamp: string;
@@ -340,15 +341,37 @@ export class PipelineService {
             outputPath: thumbOutputPath
           }).catch(() => '');
 
-          // 4. Update Clip in DB to 'draft'
+          // 4. Upload to S3 Object Storage if configured (permanent across redeploys) & Update Clip in DB
+          let storedVideoPath = videoOutputPath;
+          let storedThumbPath: string | null = fs.existsSync(thumbOutputPath) ? thumbOutputPath : null;
+
+          if (ObjectStorageService.isEnabled()) {
+            try {
+              storedVideoPath = await ObjectStorageService.uploadFile(
+                videoOutputPath,
+                `projects/${projectId}/${path.basename(videoOutputPath)}`,
+                'video/mp4'
+              );
+              if (storedThumbPath) {
+                storedThumbPath = await ObjectStorageService.uploadFile(
+                  storedThumbPath,
+                  `projects/${projectId}/${path.basename(storedThumbPath)}`,
+                  'image/jpeg'
+                );
+              }
+            } catch (s3Err: any) {
+              console.warn(`S3 upload warning for clip ${clipId}:`, s3Err.message);
+            }
+          }
+
           const now = new Date().toISOString();
           db.prepare(`
             UPDATE clips
             SET video_path = ?, thumbnail_path = ?, status = 'draft', updated_at = ?
             WHERE id = ?
           `).run(
-            videoOutputPath,
-            fs.existsSync(thumbOutputPath) ? thumbOutputPath : null,
+            storedVideoPath,
+            storedThumbPath,
             now,
             clipId
           );
@@ -511,12 +534,34 @@ export class PipelineService {
         });
       } catch {}
 
-      // Delete old files if different
-      if (clip.video_path && clip.video_path !== newVideoPath) {
+      // Delete old local files if different
+      if (clip.video_path && !ObjectStorageService.isS3Uri(clip.video_path) && clip.video_path !== newVideoPath) {
         try { fs.unlinkSync(clip.video_path); } catch {}
       }
-      if (clip.thumbnail_path && clip.thumbnail_path !== newThumbPath) {
+      if (clip.thumbnail_path && !ObjectStorageService.isS3Uri(clip.thumbnail_path) && clip.thumbnail_path !== newThumbPath) {
         try { fs.unlinkSync(clip.thumbnail_path); } catch {}
+      }
+
+      let storedVideoPath = newVideoPath;
+      let storedThumbPath: string | null = fs.existsSync(newThumbPath) ? newThumbPath : clip.thumbnail_path;
+
+      if (ObjectStorageService.isEnabled()) {
+        try {
+          storedVideoPath = await ObjectStorageService.uploadFile(
+            newVideoPath,
+            `projects/${project.id}/${path.basename(newVideoPath)}`,
+            'video/mp4'
+          );
+          if (fs.existsSync(newThumbPath)) {
+            storedThumbPath = await ObjectStorageService.uploadFile(
+              newThumbPath,
+              `projects/${project.id}/${path.basename(newThumbPath)}`,
+              'image/jpeg'
+            );
+          }
+        } catch (s3Err: any) {
+          console.warn(`S3 upload warning on reRenderClip ${clipId}:`, s3Err.message);
+        }
       }
 
       const now = new Date().toISOString();
@@ -527,8 +572,8 @@ export class PipelineService {
             caption_base_color = ?, words_per_burst = ?, updated_at = ?
         WHERE id = ?
       `).run(
-        newVideoPath,
-        fs.existsSync(newThumbPath) ? newThumbPath : clip.thumbnail_path,
+        storedVideoPath,
+        storedThumbPath,
         startTime,
         endTime,
         cropOffsetX,

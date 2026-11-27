@@ -1,6 +1,7 @@
 import initSqlJs from 'sql.js';
 import fs from 'fs';
 import path from 'path';
+import pg from 'pg';
 import { CONFIG } from '../config.js';
 
 // Ensure data directory exists
@@ -12,19 +13,71 @@ if (!fs.existsSync(dbDir)) {
 // Initialize WebAssembly-powered SQLite (Zero C++ native compilation, 100% portable)
 const SQL = await initSqlJs();
 
+let pgPool: pg.Pool | null = null;
+let pgReady = false;
+
+export function isPostgresActive(): boolean {
+  return pgReady;
+}
+
 let rawDb: any;
-if (fs.existsSync(CONFIG.DB_PATH)) {
+
+if (CONFIG.DATABASE_URL) {
   try {
-    const fileBuffer = fs.readFileSync(CONFIG.DB_PATH);
-    rawDb = new SQL.Database(fileBuffer);
-  } catch {
+    pgPool = new pg.Pool({
+      connectionString: CONFIG.DATABASE_URL,
+      max: 3,
+      idleTimeoutMillis: 30000
+    });
+    await pgPool.query(`
+      CREATE TABLE IF NOT EXISTS app_sqlite_snapshot (
+        id INTEGER PRIMARY KEY,
+        db_bytes BYTEA NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    const res = await pgPool.query('SELECT db_bytes FROM app_sqlite_snapshot WHERE id = 1');
+    if (res.rows[0]?.db_bytes) {
+      rawDb = new SQL.Database(res.rows[0].db_bytes);
+      console.log('🐘 Loaded persistent database snapshot from PostgreSQL!');
+    }
+    pgReady = true;
+  } catch (err: any) {
+    console.error('⚠️ PostgreSQL connection failed, falling back to local disk SQLite:', err.message);
+    pgPool = null;
+    pgReady = false;
+  }
+}
+
+if (!rawDb) {
+  if (fs.existsSync(CONFIG.DB_PATH)) {
+    try {
+      const fileBuffer = fs.readFileSync(CONFIG.DB_PATH);
+      rawDb = new SQL.Database(fileBuffer);
+    } catch {
+      rawDb = new SQL.Database();
+    }
+  } else {
     rawDb = new SQL.Database();
   }
-} else {
-  rawDb = new SQL.Database();
 }
 
 let saveTimer: NodeJS.Timeout | null = null;
+let pgFlushInFlight: Promise<void> = Promise.resolve();
+
+async function pushBufferToPostgres(buffer: Buffer) {
+  if (!pgPool || !pgReady) return;
+  try {
+    await pgPool.query(
+      `INSERT INTO app_sqlite_snapshot (id, db_bytes, updated_at)
+       VALUES (1, $1, NOW())
+       ON CONFLICT (id) DO UPDATE SET db_bytes = EXCLUDED.db_bytes, updated_at = NOW()`,
+      [buffer]
+    );
+  } catch (err: any) {
+    console.error('Failed to sync DB snapshot to PostgreSQL:', err.message);
+  }
+}
 
 function flushDatabaseSync() {
   if (!rawDb) return;
@@ -42,8 +95,12 @@ function flushDatabaseSync() {
     const tmpPath = `${CONFIG.DB_PATH}.tmp`;
     fs.writeFileSync(tmpPath, buffer);
     fs.renameSync(tmpPath, CONFIG.DB_PATH);
+
+    if (pgPool && pgReady) {
+      pgFlushInFlight = pgFlushInFlight.then(() => pushBufferToPostgres(buffer));
+    }
   } catch (err: any) {
-    console.error('Failed to save SQLite database to disk:', err.message);
+    console.error('Failed to save SQLite database:', err.message);
   }
 }
 
@@ -57,8 +114,16 @@ function saveDatabase() {
 }
 
 process.on('exit', () => flushDatabaseSync());
-process.on('SIGINT', () => { flushDatabaseSync(); process.exit(0); });
-process.on('SIGTERM', () => { flushDatabaseSync(); process.exit(0); });
+process.on('SIGINT', async () => {
+  flushDatabaseSync();
+  await pgFlushInFlight;
+  process.exit(0);
+});
+process.on('SIGTERM', async () => {
+  flushDatabaseSync();
+  await pgFlushInFlight;
+  process.exit(0);
+});
 
 class StatementWrapper {
   constructor(private sql: string) {}

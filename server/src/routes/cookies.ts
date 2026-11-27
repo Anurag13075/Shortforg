@@ -2,16 +2,24 @@ import { Router, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { CONFIG } from '../config.js';
+import { ObjectStorageService } from '../services/objectStorage.js';
 
 export const cookiesRouter = Router();
 
 /**
  * GET /api/cookies - Status of YouTube cookies
  */
-cookiesRouter.get('/', (_req: Request, res: Response) => {
+cookiesRouter.get('/', async (_req: Request, res: Response) => {
   try {
     const cookiePath = path.join(CONFIG.STORAGE_DIR, 'cookies.txt');
-    const exists = fs.existsSync(cookiePath);
+    let exists = fs.existsSync(cookiePath);
+    if (!exists && ObjectStorageService.isEnabled()) {
+      const restored = await ObjectStorageService.downloadText('system/cookies.txt').catch(() => null);
+      if (restored && restored.trim().length > 20) {
+        fs.writeFileSync(cookiePath, restored.trim(), 'utf-8');
+        exists = true;
+      }
+    }
     let size = 0;
     let cookieCount = 0;
 
@@ -38,7 +46,7 @@ cookiesRouter.get('/', (_req: Request, res: Response) => {
 /**
  * POST /api/cookies - Save or update YouTube cookies
  */
-cookiesRouter.post('/', (req: Request, res: Response) => {
+cookiesRouter.post('/', async (req: Request, res: Response) => {
   const { cookiesText } = req.body;
   if (!cookiesText || typeof cookiesText !== 'string' || cookiesText.trim().length < 20) {
     return res.status(400).json({
@@ -57,7 +65,11 @@ cookiesRouter.post('/', (req: Request, res: Response) => {
 
   try {
     const cookiePath = path.join(CONFIG.STORAGE_DIR, 'cookies.txt');
-    fs.writeFileSync(cookiePath, cookiesText.trim(), 'utf-8');
+    const trimmed = cookiesText.trim();
+    fs.writeFileSync(cookiePath, trimmed, 'utf-8');
+    if (ObjectStorageService.isEnabled()) {
+      await ObjectStorageService.uploadText('system/cookies.txt', trimmed);
+    }
     res.json({ success: true, message: 'YouTube cookies successfully saved to vault!' });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -67,11 +79,14 @@ cookiesRouter.post('/', (req: Request, res: Response) => {
 /**
  * DELETE /api/cookies - Clear saved cookies
  */
-cookiesRouter.delete('/', (_req: Request, res: Response) => {
+cookiesRouter.delete('/', async (_req: Request, res: Response) => {
   try {
     const cookiePath = path.join(CONFIG.STORAGE_DIR, 'cookies.txt');
     if (fs.existsSync(cookiePath)) {
       fs.unlinkSync(cookiePath);
+    }
+    if (ObjectStorageService.isEnabled()) {
+      await ObjectStorageService.deletePrefix('system/cookies.txt').catch(() => {});
     }
     res.json({ success: true, message: 'YouTube cookies cleared' });
   } catch (err: any) {

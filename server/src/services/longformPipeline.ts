@@ -8,6 +8,7 @@ import { downloadYouTubeVideo } from './downloader.js';
 import { FFmpegService } from './ffmpeg.js';
 import { transcribeAudio, TranscriptionResult } from './transcriber.js';
 import { LongformFFmpegService } from './longformFfmpeg.js';
+import { ObjectStorageService } from './objectStorage.js';
 
 export interface LongformLogEntry {
   timestamp: string;
@@ -327,17 +328,38 @@ export class LongformPipelineService {
       });
 
       // ----------------------------------------------------------------------
-      // STEP 7: FINALIZE
+      // STEP 7: UPLOAD TO PERMANENT S3 OBJECT STORAGE & FINALIZE
       // ----------------------------------------------------------------------
-      const relativeVideoPath = path.relative(CONFIG.STORAGE_DIR, masterVideoPath).replace(/\\/g, '/');
-      const relativeThumbPath = path.relative(CONFIG.STORAGE_DIR, thumbnailPath).replace(/\\/g, '/');
+      let storedVideoPath = path.relative(CONFIG.STORAGE_DIR, masterVideoPath).replace(/\\/g, '/');
+      let storedThumbPath = path.relative(CONFIG.STORAGE_DIR, thumbnailPath).replace(/\\/g, '/');
+
+      if (ObjectStorageService.isEnabled()) {
+        this.notifyProgress(projectId, 'rendering', 98, 'Uploading 1080p master video & thumbnail to permanent cloud storage...');
+        try {
+          storedVideoPath = await ObjectStorageService.uploadFile(
+            masterVideoPath,
+            `longform/${projectId}/master_longform.mp4`,
+            'video/mp4'
+          );
+          if (fs.existsSync(thumbnailPath)) {
+            storedThumbPath = await ObjectStorageService.uploadFile(
+              thumbnailPath,
+              `longform/${projectId}/thumbnail.jpg`,
+              'image/jpeg'
+            );
+          }
+          this.addLog(projectId, 'success', '☁️ Saved master video & thumbnail permanently to S3 Object Storage.');
+        } catch (s3Err: any) {
+          this.addLog(projectId, 'warn', `S3 upload warning (kept local): ${s3Err.message}`);
+        }
+      }
 
       db.prepare(`
         UPDATE longform_projects
         SET status = 'completed', progress = 100, stage_message = 'Long-form documentary synthesized successfully!',
             actual_duration = ?, video_path = ?, thumbnail_path = ?, updated_at = ?
         WHERE id = ?
-      `).run(actualDuration, relativeVideoPath, relativeThumbPath, new Date().toISOString(), projectId);
+      `).run(actualDuration, storedVideoPath, storedThumbPath, new Date().toISOString(), projectId);
 
       this.addLog(projectId, 'success', `🏆 Full ${Math.round(actualDuration / 60)}m ${Math.round(actualDuration % 60)}s Long-Form Video ready for preview & upload!`);
 
@@ -657,14 +679,26 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
       actualDuration = meta.duration;
     } catch {}
 
-    const relativeVideoPath = path.relative(CONFIG.STORAGE_DIR, masterVideoPath).replace(/\\/g, '/');
+    let storedVideoPath = path.relative(CONFIG.STORAGE_DIR, masterVideoPath).replace(/\\/g, '/');
+
+    if (ObjectStorageService.isEnabled()) {
+      try {
+        storedVideoPath = await ObjectStorageService.uploadFile(
+          masterVideoPath,
+          `longform/${projectId}/master_longform.mp4`,
+          'video/mp4'
+        );
+      } catch (s3Err: any) {
+        console.warn('S3 upload warning on longform reRender:', s3Err.message);
+      }
+    }
 
     db.prepare(`
       UPDATE longform_projects
       SET status = 'completed', progress = 100, stage_message = 'Re-render completed successfully!',
           actual_duration = ?, video_path = ?, updated_at = ?
       WHERE id = ?
-    `).run(actualDuration, relativeVideoPath, new Date().toISOString(), projectId);
+    `).run(actualDuration, storedVideoPath, new Date().toISOString(), projectId);
 
     this.addLog(projectId, 'success', `🏆 Re-rendered master video (${Math.round(actualDuration / 60)}m ${Math.round(actualDuration % 60)}s)!`);
   }

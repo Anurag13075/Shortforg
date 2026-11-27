@@ -6,6 +6,7 @@ import { CONFIG } from '../config.js';
 import { db, LongformProjectRecord, LongformChapter, ChannelRecord } from '../db/index.js';
 import { LongformPipelineService } from '../services/longformPipeline.js';
 import { SchedulerService } from '../services/scheduler.js';
+import { ObjectStorageService } from '../services/objectStorage.js';
 
 export const longformRouter = Router();
 
@@ -285,7 +286,7 @@ longformRouter.delete('/:id', (req: Request, res: Response) => {
 
     db.prepare('DELETE FROM longform_projects WHERE id = ?').run(projectId);
 
-    // Delete folder
+    // Delete local folder & S3 objects
     const projectDir = path.join(CONFIG.STORAGE_DIR, `longform_${projectId}`);
     if (fs.existsSync(projectDir)) {
       try {
@@ -294,6 +295,7 @@ longformRouter.delete('/:id', (req: Request, res: Response) => {
         console.warn('Failed to delete project folder:', e.message);
       }
     }
+    ObjectStorageService.deletePrefix(`longform/${projectId}/`).catch(() => {});
 
     res.json({ success: true, message: 'Longform project deleted' });
   } catch (err: any) {
@@ -304,11 +306,16 @@ longformRouter.delete('/:id', (req: Request, res: Response) => {
 /**
  * GET /api/longform/:id/video - Video streaming with HTTP Range requests
  */
-longformRouter.get('/:id/video', (req: Request, res: Response) => {
+longformRouter.get('/:id/video', async (req: Request, res: Response) => {
   try {
     const project = db.prepare('SELECT video_path FROM longform_projects WHERE id = ?').get(req.params.id) as { video_path: string } | undefined;
     if (!project || !project.video_path) {
       return res.status(404).json({ success: false, error: 'Video file not ready' });
+    }
+
+    if (ObjectStorageService.isS3Uri(project.video_path)) {
+      await ObjectStorageService.streamVideoToResponse(project.video_path, req, res);
+      return;
     }
 
     const fullPath = path.isAbsolute(project.video_path)
@@ -366,11 +373,16 @@ longformRouter.get('/:id/video', (req: Request, res: Response) => {
 /**
  * GET /api/longform/:id/thumbnail - Serve 16:9 thumbnail
  */
-longformRouter.get('/:id/thumbnail', (req: Request, res: Response) => {
+longformRouter.get('/:id/thumbnail', async (req: Request, res: Response) => {
   try {
     const project = db.prepare('SELECT thumbnail_path FROM longform_projects WHERE id = ?').get(req.params.id) as { thumbnail_path: string } | undefined;
     if (!project || !project.thumbnail_path) {
       return res.status(404).json({ success: false, error: 'Thumbnail not ready' });
+    }
+
+    if (ObjectStorageService.isS3Uri(project.thumbnail_path)) {
+      await ObjectStorageService.streamImageToResponse(project.thumbnail_path, res);
+      return;
     }
 
     const fullPath = path.isAbsolute(project.thumbnail_path)
@@ -392,11 +404,18 @@ longformRouter.get('/:id/thumbnail', (req: Request, res: Response) => {
 /**
  * GET /api/longform/:id/download - Force download attachment
  */
-longformRouter.get('/:id/download', (req: Request, res: Response) => {
+longformRouter.all('/:id/download', async (req: Request, res: Response) => {
   try {
     const project = db.prepare('SELECT title, video_path FROM longform_projects WHERE id = ?').get(req.params.id) as any;
     if (!project || !project.video_path) {
       return res.status(404).json({ success: false, error: 'Video not ready' });
+    }
+
+    const safeTitle = (project.title || 'video').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
+
+    if (ObjectStorageService.isS3Uri(project.video_path)) {
+      await ObjectStorageService.streamVideoToResponse(project.video_path, req, res, `${safeTitle}_1080p.mp4`);
+      return;
     }
 
     const fullPath = path.isAbsolute(project.video_path)
@@ -407,7 +426,13 @@ longformRouter.get('/:id/download', (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Video missing' });
     }
 
-    const safeTitle = (project.title || 'video').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
+    if (req.method === 'HEAD') {
+      const stat = fs.statSync(fullPath);
+      res.writeHead(200, { 'Content-Length': stat.size, 'Content-Type': 'video/mp4' });
+      res.end();
+      return;
+    }
+
     res.download(fullPath, `${safeTitle}_1080p.mp4`);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });

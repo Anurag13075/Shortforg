@@ -8,12 +8,12 @@ export interface ViralMoment {
   end: number;
   virality_score: number;
   reason: string;
-  hook_line: string;
+  hook_line: string;  
   title: string;
   title_options: string[];
   caption: string;
   caption_options: string[];
-  hashtags: string[];
+  hashtags: string[]; // 
 }
 
 const NICHE_PROMPTS: Record<string, string> = {
