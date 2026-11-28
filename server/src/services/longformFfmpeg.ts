@@ -31,10 +31,14 @@ export class LongformFFmpegService {
   public static generateChapterAss(
     chapterTitle: string,
     hookText: string | undefined,
-    outputPath: string
+    outputPath: string,
+    chapterIndex?: number,
+    totalChapters?: number
   ): string {
     const cleanTitle = chapterTitle.replace(/"/g, '').trim().toUpperCase();
-    const cleanHook = (hookText || '').replace(/"/g, '').trim().toUpperCase();
+    const rawHook = (hookText || '').replace(/"/g, '').trim().toUpperCase();
+    const partPrefix = chapterIndex && totalChapters ? `PART ${chapterIndex}/${totalChapters}  •  ` : '';
+    const cleanHook = `${partPrefix}${rawHook}`.trim();
 
     // 1920x1080 16:9 widescreen layout
     const assContent = `[Script Info]
@@ -48,13 +52,13 @@ PlayResY: 1080
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: ChapterBanner,Anton,54,&H00FFFFFF,&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,6,3,1,90,90,90,1
-Style: HookBadge,Anton,36,&H0000FFFF,&H00000000,&H00000000,&HA0000000,-1,0,0,0,100,100,1,0,1,5,2,1,90,90,165,1
+Style: ChapterBanner,Anton,52,&H00FFFFFF,&H00000000,&H00000000,&HC0101018,-1,0,0,0,100,100,2,0,3,14,0,1,85,85,80,1
+Style: HookBadge,Anton,32,&H0000E5FF,&H00000000,&H00000000,&HD00B0B12,-1,0,0,0,100,100,2,0,3,10,0,1,85,85,152,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-${cleanHook ? `Dialogue: 0,0:00:00.40,0:00:04.20,HookBadge,,0,0,0,,{\\fad(300,500)}${cleanHook}` : ''}
-Dialogue: 0,0:00:00.50,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(300,500)}${cleanTitle}
+${cleanHook ? `Dialogue: 0,0:00:00.45,0:00:04.20,HookBadge,,0,0,0,,{\\fad(250,450)} ${cleanHook} ` : ''}
+Dialogue: 0,0:00:00.55,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(250,450)} ${cleanTitle} 
 `;
 
     fs.writeFileSync(outputPath, assContent, 'utf-8');
@@ -72,6 +76,8 @@ Dialogue: 0,0:00:00.50,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(300,500)}${cleanT
     hookText?: string;
     assPath?: string;
     outputPath: string;
+    isFirst?: boolean;
+    isLast?: boolean;
     onProgress?: (percent: number) => void;
   }): Promise<string> {
     try {
@@ -94,11 +100,13 @@ Dialogue: 0,0:00:00.50,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(300,500)}${cleanT
       hookText?: string;
       assPath?: string;
       outputPath: string;
+      isFirst?: boolean;
+      isLast?: boolean;
       onProgress?: (percent: number) => void;
     },
     includeSubtitles: boolean
   ): Promise<string> {
-    const { sourceVideoPath, startTime, endTime, assPath, outputPath } = params;
+    const { sourceVideoPath, startTime, endTime, assPath, outputPath, isFirst, isLast } = params;
     const duration = Math.max(1, endTime - startTime);
 
     const hasSubtitles = includeSubtitles && assPath && fs.existsSync(assPath);
@@ -106,10 +114,24 @@ Dialogue: 0,0:00:00.50,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(300,500)}${cleanT
     const fontsDir = this.getFontsDir();
     const fontsDirParam = fontsDir ? `:fontsdir=${this.escapeFilterPath(fontsDir)}` : '';
 
-    // Normalize to 1920x1080 16:9 with letterboxing / pillarboxing if aspect ratio doesn't match
-    let vf = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1';
+    // Normalize to 1920x1080 16:9 edge-to-edge @ 30fps with unified cinematic color grade & subtle vignette
+    let vf = `scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=30,setsar=1,eq=contrast=1.06:saturation=1.10,vignette=PI/6`;
     if (hasSubtitles) {
       vf += `,subtitles=${escapedAssPath}${fontsDirParam}`;
+    }
+    if (isFirst) {
+      vf += `,fade=t=in:st=0:d=0.45`;
+    }
+    if (isLast && duration > 1.5) {
+      vf += `,fade=t=out:st=${Math.max(0.2, duration - 0.6).toFixed(2)}:d=0.60`;
+    }
+
+    let af = `loudnorm=I=-14:TP=-1.0:LRA=7`;
+    if (isFirst) {
+      af += `,afade=t=in:st=0:d=0.30`;
+    }
+    if (isLast && duration > 1.5) {
+      af += `,afade=t=out:st=${Math.max(0.2, duration - 0.5).toFixed(2)}:d=0.50`;
     }
 
     const args = [
@@ -118,6 +140,7 @@ Dialogue: 0,0:00:00.50,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(300,500)}${cleanT
       '-i', sourceVideoPath,
       '-t', duration.toFixed(2),
       '-vf', vf,
+      '-af', af,
       '-c:v', 'libx264',
       '-preset', 'fast',
       '-crf', '18',
@@ -164,7 +187,58 @@ Dialogue: 0,0:00:00.50,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(300,500)}${cleanT
   }
 
   /**
-   * Concatenate rendered chapter segments into the final master long-form video with audio mastering
+   * Pairwise xfade + acrossfade helper (keeps memory low by decoding only 2 streams at a time)
+   */
+  private static async crossfadePair(
+    firstPath: string,
+    secondPath: string,
+    outputPath: string,
+    transition: string = 'dissolve',
+    fadeDuration: number = 0.45
+  ): Promise<string> {
+    const meta = await FFmpegService.getVideoMetadata(firstPath);
+    const d1 = Math.max(1.5, meta.duration || 10);
+    const dur = Math.min(fadeDuration, d1 * 0.2);
+    const offset = Math.max(0.1, d1 - dur).toFixed(3);
+
+    const filterComplex = `[0:v][1:v]xfade=transition=${transition}:duration=${dur.toFixed(3)}:offset=${offset}[v];[0:a][1:a]acrossfade=d=${dur.toFixed(3)}:c1=tri:c2=tri[a]`;
+
+    const args = [
+      '-y',
+      '-i', firstPath,
+      '-i', secondPath,
+      '-filter_complex', filterComplex,
+      '-map', '[v]',
+      '-map', '[a]',
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', '18',
+      '-c:a', 'aac',
+      '-b:a', '256k',
+      '-ar', '48000',
+      '-ac', '2',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      outputPath
+    ];
+
+    return new Promise((resolve, reject) => {
+      const child = spawn('ffmpeg', args);
+      let stderr = '';
+      child.stderr.on('data', (d) => { stderr += d.toString(); });
+      child.on('close', (code) => {
+        if (code === 0 && fs.existsSync(outputPath)) {
+          resolve(outputPath);
+        } else {
+          reject(new Error(`xfade failed (${code}): ${stderr.slice(-300)}`));
+        }
+      });
+      child.on('error', reject);
+    });
+  }
+
+  /**
+   * Concatenate rendered chapter segments into the final master long-form video with seamless xfade + acrossfade transitions
    */
   public static async concatenateSegments(
     segmentPaths: string[],
@@ -176,13 +250,49 @@ Dialogue: 0,0:00:00.50,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(300,500)}${cleanT
       throw new Error('No chapter segments provided for concatenation');
     }
 
-    // Write concat file
+    if (segmentPaths.length === 1) {
+      fs.copyFileSync(segmentPaths[0], outputPath);
+      if (onProgress) onProgress(100);
+      return outputPath;
+    }
+
+    // Try seamless pairwise xfade + acrossfade transitions
+    try {
+      const transitions = ['dissolve', 'fadeblack', 'smoothleft', 'dissolve'];
+      const workDir = path.dirname(outputPath);
+      let current = segmentPaths[0];
+      const tempFiles: string[] = [];
+
+      for (let i = 1; i < segmentPaths.length; i++) {
+        const isLastStep = i === segmentPaths.length - 1;
+        const stepOut = isLastStep ? outputPath : path.join(workDir, `_xfade_step_${i}.mp4`);
+        if (!isLastStep) tempFiles.push(stepOut);
+
+        const transition = transitions[(i - 1) % transitions.length];
+        await this.crossfadePair(current, segmentPaths[i], stepOut, transition, 0.45);
+        current = stepOut;
+
+        if (onProgress) {
+          onProgress(Math.round((i / (segmentPaths.length - 1)) * 95));
+        }
+      }
+
+      // Clean up intermediate xfade temp files
+      for (const tmp of tempFiles) {
+        try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch {}
+      }
+      if (onProgress) onProgress(100);
+      return outputPath;
+    } catch (xfadeErr: any) {
+      console.warn('Pairwise xfade failed, falling back to standard concat:', xfadeErr.message);
+    }
+
+    // Fallback: standard concat with audio mastering (-14 LUFS YouTube standard)
     const fileContent = segmentPaths
       .map((p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
       .join('\n');
     fs.writeFileSync(concatListFile, fileContent, 'utf-8');
 
-    // Concat with audio mastering (-14 LUFS YouTube standard)
     const args = [
       '-y',
       '-f', 'concat',
@@ -208,7 +318,6 @@ Dialogue: 0,0:00:00.50,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(300,500)}${cleanT
       child.stderr.on('data', (data) => {
         stderr += data.toString();
         if (onProgress) {
-          // Send heartbeat
           onProgress(50);
         }
       });

@@ -402,14 +402,14 @@ export class LongformPipelineService {
 
     const groq = new Groq({ apiKey });
 
-    // Prepare concise source summaries with timestamped key moments
+    // Prepare rich timestamped source summaries so the AI Director sees the full arc
     const sourcesSummary = sources.map((src) => {
       const words = src.transcript?.words || [];
       const totalWords = words.length;
-      const step = Math.max(1, Math.floor(totalWords / 15));
+      const step = Math.max(1, Math.floor(totalWords / 30));
       const sampledQuotes: string[] = [];
       for (let i = 0; i < totalWords; i += step) {
-        const slice = words.slice(i, i + 15);
+        const slice = words.slice(i, i + 16);
         if (slice.length > 0) {
           sampledQuotes.push(`[${slice[0].start.toFixed(0)}s]: ${slice.map((w) => w.word).join(' ')}`);
         }
@@ -418,7 +418,7 @@ export class LongformPipelineService {
 Title: "${src.title}"
 Total Duration: ${Math.round(src.duration)}s
 Sampled Timeline Excerpts:
-${sampledQuotes.slice(0, 12).join('\n')}`;
+${sampledQuotes.slice(0, 28).join('\n')}`;
     }).join('\n\n');
 
     const isAutoTopic = !topic || topic === 'Auto-Synthesized Documentary';
@@ -496,10 +496,11 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
         if (content) {
           const parsed = JSON.parse(content);
           if (parsed && Array.isArray(parsed.chapters) && parsed.chapters.length > 0) {
-            // Validate & sanitize timestamps against source durations
+            // Validate, sanitize, and snap timestamps to natural speech pauses / sentence boundaries
             const sanitizedChapters = parsed.chapters.map((ch: any) => {
               const srcIdx = Math.max(0, Math.min(sources.length - 1, Number(ch.source_index) || 0));
-              const maxDur = sources[srcIdx]?.duration || 300;
+              const src = sources[srcIdx];
+              const maxDur = src?.duration || 300;
               let start = Math.max(0, Number(ch.start_time) || 10);
               let end = Number(ch.end_time) || start + 60;
               if (end <= start) end = start + 50;
@@ -507,11 +508,17 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
                 end = Math.max(15, maxDur - 2);
                 start = Math.max(0, end - 60);
               }
+              const words = src?.transcript?.words || [];
+              if (words.length > 0) {
+                start = this.snapToSpeechBoundary(words, start, 'start');
+                end = this.snapToSpeechBoundary(words, end, 'end');
+                if (end <= start + 8) end = Math.min(maxDur, start + 45);
+              }
               return {
                 title: String(ch.title || `Chapter ${srcIdx + 1}`),
                 source_index: srcIdx,
-                start_time: Math.round(start),
-                end_time: Math.round(end),
+                start_time: Number(start.toFixed(1)),
+                end_time: Number(end.toFixed(1)),
                 hook_text: String(ch.hook_text || 'INSANE REVELATION'),
                 summary: String(ch.summary || '')
               };
@@ -568,6 +575,43 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
   }
 
   /**
+   * Snaps a target timestamp to the nearest natural speech pause or sentence boundary within ±4s
+   * so chapters never start or cut off mid-word.
+   */
+  private static snapToSpeechBoundary(
+    words: Array<{ word: string; start: number; end: number }>,
+    targetSec: number,
+    mode: 'start' | 'end'
+  ): number {
+    let bestTime = targetSec;
+    let bestScore = Infinity;
+
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      const candidate = mode === 'start' ? Math.max(0, w.start - 0.15) : w.end + 0.2;
+      const dist = Math.abs(candidate - targetSec);
+      if (dist > 4.0) continue;
+
+      const prev = i > 0 ? words[i - 1] : null;
+      const next = i + 1 < words.length ? words[i + 1] : null;
+      const gapBefore = prev ? w.start - prev.end : 1.0;
+      const gapAfter = next ? next.start - w.end : 1.0;
+      const endsSentence = /[.?!]$/.test((mode === 'start' ? prev?.word : w.word) || '');
+
+      const isPause = mode === 'start' ? gapBefore >= 0.3 : gapAfter >= 0.3;
+      const penalty = (endsSentence ? 0 : 1.5) + (isPause ? 0 : 1.0);
+      const score = dist + penalty;
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestTime = candidate;
+      }
+    }
+
+    return bestTime;
+  }
+
+  /**
    * Renders each chapter segment with title cards and 1080p normalization
    */
   private static async renderChapters(
@@ -596,7 +640,7 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
       );
 
       const assPath = path.join(segmentsDir, `chapter_${i}.ass`);
-      LongformFFmpegService.generateChapterAss(ch.title, ch.hook_text, assPath);
+      LongformFFmpegService.generateChapterAss(ch.title, ch.hook_text, assPath, i + 1, chapters.length);
 
       const segmentOutPath = path.join(segmentsDir, `seg_${i}.mp4`);
 
@@ -608,6 +652,8 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
         hookText: ch.hook_text,
         assPath,
         outputPath: segmentOutPath,
+        isFirst: i === 0,
+        isLast: i === chapters.length - 1,
         onProgress: (p) => {
           const scaled = Math.round(55 + (i / chapters.length) * 33 + (p * 0.33) / chapters.length);
           this.notifyProgress(projectId, 'rendering', scaled, `[${i + 1}/${chapters.length}] Rendering: ${p}%`);
