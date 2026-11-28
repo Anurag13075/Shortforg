@@ -76,6 +76,7 @@ export const CONFIG = {
   APP_URL: (process.env.APP_URL || 'http://localhost:5173').trim().replace(/\/$/, ''),
   VIDKRAKEN_API_KEY: (process.env.VIDKRAKEN_API_KEY || '').trim(),
   GROQ_API_KEY: (process.env.GROQ_API_KEY || '').trim(),
+  ELEVENLABS_API_KEY: (process.env.ELEVENLABS_API_KEY || '').trim(),
   GOOGLE_CLIENT_ID: (process.env.GOOGLE_CLIENT_ID || '').trim(),
   GOOGLE_CLIENT_SECRET: (process.env.GOOGLE_CLIENT_SECRET || '').trim(),
 

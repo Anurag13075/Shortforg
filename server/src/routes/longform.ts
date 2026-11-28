@@ -97,7 +97,7 @@ longformRouter.post('/sync', (req: Request, res: Response) => {
  * POST /api/longform - Create new longform project & launch pipeline
  */
 longformRouter.post('/', (req: Request, res: Response) => {
-  const { topic, sourceUrls, targetDuration } = req.body;
+  const { topic, sourceUrls, targetDuration, narratorEnabled, narratorVoice } = req.body;
 
   const cleanTopic = typeof topic === 'string' && topic.trim() ? topic.trim() : 'Auto-Synthesized Documentary';
 
@@ -116,14 +116,18 @@ longformRouter.post('/', (req: Request, res: Response) => {
   const projectId = uuidv4();
   const now = new Date().toISOString();
   const durationSec = Math.max(300, Math.min(1800, Number(targetDuration) || 600));
+  const useNarrator = narratorEnabled === false ? 0 : 1;
+  const voiceName = typeof narratorVoice === 'string' && narratorVoice.trim()
+    ? narratorVoice.trim()
+    : 'en-US-AndrewMultilingualNeural';
 
   try {
     db.prepare(`
       INSERT INTO longform_projects (
         id, topic, title, source_urls, target_duration, actual_duration,
-        status, progress, stage_message, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 0, 'pending', 0, 'Project created. Initializing Long-Form Studio Engine...', ?, ?)
-    `).run(projectId, cleanTopic, cleanTopic, JSON.stringify(cleanUrls), durationSec, now, now);
+        status, progress, stage_message, narrator_enabled, narrator_voice, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 0, 'pending', 0, 'Project created. Initializing Long-Form Studio Engine...', ?, ?, ?, ?)
+    `).run(projectId, cleanTopic, cleanTopic, JSON.stringify(cleanUrls), durationSec, useNarrator, voiceName, now, now);
 
     // Launch background pipeline
     setImmediate(() => {

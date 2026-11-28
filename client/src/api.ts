@@ -485,10 +485,16 @@ export const api = {
 
   getLongformLogs: (id: string) => request<any[]>(`/api/longform/${id}/logs`),
 
-  createLongformProject: (topic: string, sourceUrls: string[], targetDuration: number = 600) =>
+  createLongformProject: (
+    topic: string,
+    sourceUrls: string[],
+    targetDuration: number = 600,
+    narratorEnabled: boolean = true,
+    narratorVoice: string = 'en-US-AndrewMultilingualNeural'
+  ) =>
     request<LongformProject>('/api/longform', {
       method: 'POST',
-      body: JSON.stringify({ topic, sourceUrls, targetDuration })
+      body: JSON.stringify({ topic, sourceUrls, targetDuration, narratorEnabled, narratorVoice })
     }),
 
   retryLongformProject: (id: string) =>

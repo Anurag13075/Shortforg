@@ -70,6 +70,8 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
   const [topic, setTopic] = useState('');
   const [sourceUrls, setSourceUrls] = useState<string[]>(['', '']);
   const [targetDuration, setTargetDuration] = useState<number>(600); // 10 min default
+  const [narratorEnabled, setNarratorEnabled] = useState<boolean>(true);
+  const [narratorVoice, setNarratorVoice] = useState<string>('en-US-AndrewMultilingualNeural');
 
   // Editing state
   const [editedChapters, setEditedChapters] = useState<LongformChapter[]>([]);
@@ -264,7 +266,13 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
 
     setIsSubmitting(true);
     try {
-      const newProj = await api.createLongformProject(topic.trim(), cleanUrls, targetDuration);
+      const newProj = await api.createLongformProject(
+        topic.trim(),
+        cleanUrls,
+        targetDuration,
+        narratorEnabled,
+        narratorVoice
+      );
       onToast('🚀 Long-Form Studio Engine started synthesizing!', 'success');
       setProjects([newProj, ...projects]);
       setActiveProjectId(newProj.id);
@@ -1497,6 +1505,58 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* AI Documentary Narrator (Cold Open + Chapter Bridges) */}
+                <div className="p-3.5 rounded-xl bg-black/30 border border-white/[0.08] space-y-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white">AI Documentary Narrator</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
+                          MONETIZATION SAFE
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400 mt-0.5">
+                        Adds a Cold-Open Hook, spoken B-roll bridges between chapters, and ambient synth bed.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNarratorEnabled((v) => !v)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 cursor-pointer ${
+                        narratorEnabled
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-white/[0.06] text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {narratorEnabled ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+
+                  {narratorEnabled && (
+                    <div className="grid grid-cols-3 gap-2 pt-1">
+                      {[
+                        { id: 'en-US-AndrewMultilingualNeural', name: 'Andrew', role: 'Warm Doc' },
+                        { id: 'en-US-BrianNeural', name: 'Brian', role: 'Deep Story' },
+                        { id: 'en-US-EmmaMultilingualNeural', name: 'Emma', role: 'Crisp Analyst' }
+                      ].map((v) => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => setNarratorVoice(v.id)}
+                          className={`px-2.5 py-2 rounded-lg border text-left transition-all cursor-pointer ${
+                            narratorVoice === v.id
+                              ? 'bg-purple-600/20 border-purple-500 text-white'
+                              : 'bg-black/40 border-white/[0.06] text-zinc-400 hover:border-white/20'
+                          }`}
+                        >
+                          <div className="text-[11px] font-bold">{v.name}</div>
+                          <div className="text-[10px] font-mono text-zinc-500">{v.role}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Submit Button */}

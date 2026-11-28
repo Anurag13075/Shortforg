@@ -7,9 +7,9 @@ zerops:
       base: nodejs@22
       buildCommands:
         # Build server (TypeScript -> server/dist)
-        - cd server && npm install && npm run build
+        - cd server && pnpm install && pnpm run build
         # Build client (Vite -> client/dist)
-        - cd client && npm install && npm run build
+        - cd client && pnpm install && pnpm run build
       deployFiles:
         - server/dist
         - server/fonts
@@ -25,7 +25,7 @@ zerops:
         - apk add --no-cache ffmpeg ttf-dejavu fontconfig python3 py3-pip gcompat curl ca-certificates || true
         - mkdir -p /usr/share/fonts/truetype/custom && cp server/fonts/*.ttf /usr/share/fonts/truetype/custom/ 2>/dev/null || true
         - fc-cache -f 2>/dev/null || true
-        - python3 -m pip install --no-cache-dir --break-system-packages -U yt-dlp yt-dlp-ejs || pip3 install --no-cache-dir -U yt-dlp yt-dlp-ejs || apk add --no-cache yt-dlp || true
+        - python3 -m pip install --no-cache-dir --break-system-packages -U yt-dlp yt-dlp-ejs edge-tts || pip3 install --no-cache-dir -U yt-dlp yt-dlp-ejs edge-tts || apk add --no-cache yt-dlp || true
       start: node server/dist/index.js
       volume:
         hostname: storage

@@ -338,6 +338,12 @@ export function initDatabase() {
   try {
     db.exec("ALTER TABLE longform_projects ADD COLUMN description TEXT;");
   } catch {}
+  try {
+    db.exec("ALTER TABLE longform_projects ADD COLUMN narrator_enabled INTEGER DEFAULT 1;");
+  } catch {}
+  try {
+    db.exec("ALTER TABLE longform_projects ADD COLUMN narrator_voice TEXT DEFAULT 'en-US-AndrewMultilingualNeural';");
+  } catch {}
 
   // Recover any jobs stuck in mid-flight states after an unexpected restart
   try {
@@ -433,6 +439,9 @@ export interface LongformChapter {
   duration: number;
   hook_text?: string;
   summary?: string;
+  intro_narration?: string;
+  bridge_narration?: string;
+  outro_narration?: string;
   order: number;
 }
 
@@ -450,6 +459,8 @@ export interface LongformProjectRecord {
   chapters: string | null; // JSON array of LongformChapter
   script_outline: string | null;
   description?: string | null;
+  narrator_enabled?: number;
+  narrator_voice?: string | null;
   video_path: string | null;
   thumbnail_path: string | null;
   assigned_channel_id: string | null;

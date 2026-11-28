@@ -66,6 +66,131 @@ Dialogue: 0,0:00:00.55,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(250,450)} ${clean
   }
 
   /**
+   * Generates a clean editorial kinetic overlay for Cold-Open Intro, Chapter Bridges, and Outro
+   */
+  public static generateBridgeAss(params: {
+    kicker: string;
+    headline: string;
+    duration: number;
+    outputPath: string;
+  }): string {
+    const cleanKicker = params.kicker.replace(/"/g, '').trim().toUpperCase().slice(0, 48);
+    const cleanHeadline = params.headline.replace(/"/g, '').trim().toUpperCase().slice(0, 68);
+    const endSec = Math.max(2.0, params.duration - 0.35);
+    const mins = Math.floor(endSec / 60);
+    const secs = (endSec % 60).toFixed(2).padStart(5, '0');
+    const endStamp = `0:${String(mins).padStart(2, '0')}:${secs}`;
+
+    const assContent = `[Script Info]
+Title: Documentary Narrator Bridge
+ScriptType: v4.00+
+WrapStyle: 1
+ScaledBorderAndShadow: yes
+YCbCr Matrix: TV.709
+PlayResX: 1920
+PlayResY: 1080
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: KickerPill,Anton,34,&H0000E5FF,&H00000000,&H00000000,&HD00B0B12,-1,0,0,0,100,100,3,0,3,12,0,2,120,120,565,1
+Style: BridgeHeadline,Anton,66,&H00FFFFFF,&H00000000,&H00000000,&HB00B0B12,-1,0,0,0,100,100,2,0,1,4,3,5,140,140,0,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+${cleanKicker ? `Dialogue: 0,0:00:00.25,${endStamp},KickerPill,,0,0,0,,{\\fad(250,350)} ${cleanKicker} ` : ''}
+Dialogue: 0,0:00:00.35,${endStamp},BridgeHeadline,,0,0,0,,{\\fad(300,350)}${cleanHeadline}
+`;
+
+    fs.writeFileSync(params.outputPath, assContent, 'utf-8');
+    return params.outputPath;
+  }
+
+  /**
+   * Renders a cinematic 1080p B-roll Narrator Bridge (slow Ken Burns push-in + ducked ambient synth pad + narrator voiceover)
+   */
+  public static async renderNarratorBridgeSegment(params: {
+    sourceVideoPath: string;
+    startTime: number;
+    narratorAudioPath: string;
+    duration: number;
+    kicker: string;
+    headline: string;
+    outputPath: string;
+  }): Promise<string> {
+    const { sourceVideoPath, startTime, narratorAudioPath, duration, kicker, headline, outputPath } = params;
+    const dur = Math.max(2.0, duration + 0.5); // 0.25s lead-in + 0.25s tail
+    const durStr = dur.toFixed(2);
+    const fadeOutStart = Math.max(0.2, dur - 0.35).toFixed(2);
+
+    const assPath = outputPath.replace(/\.mp4$/, '.ass');
+    this.generateBridgeAss({ kicker, headline, duration: dur, outputPath: assPath });
+
+    const fontsDir = this.getFontsDir();
+    const fontsDirParam = fontsDir ? `:fontsdir=${this.escapeFilterPath(fontsDir)}` : '';
+    const escapedAssPath = this.escapeFilterPath(assPath);
+
+    // Muted source gameplay with subtle slow-mo + Ken Burns push-in + dark cinema grade
+    const vf = [
+      `setpts=1.08*PTS`,
+      `scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080`,
+      `scale=w='trunc(1920*(1+0.05*t/${durStr})/2)*2':h=-2:eval=frame,crop=1920:1080`,
+      `fps=30,setsar=1`,
+      `eq=contrast=1.10:saturation=1.08:brightness=-0.06`,
+      `vignette=PI/4`,
+      `subtitles=${escapedAssPath}${fontsDirParam}`,
+      `fade=t=in:st=0:d=0.35,fade=t=out:st=${fadeOutStart}:d=0.35`
+    ].join(',');
+
+    // Mix crisp narrator voiceover (-14 LUFS) over subtle synthesized low-end documentary synth pad (-26 dB)
+    const filterComplex = [
+      `[1:a]adelay=200|200,apad=pad_dur=0.4,loudnorm=I=-14:TP=-1.0:LRA=7[vo]`,
+      `sine=f=55:d=${durStr}[s1]`,
+      `sine=f=82.41:d=${durStr}[s2]`,
+      `sine=f=110:d=${durStr}[s3]`,
+      `[s1][s2][s3]amix=inputs=3:normalize=0,lowpass=f=240,volume=-26dB,aformat=sample_rates=48000:channel_layouts=stereo[pad]`,
+      `[vo][pad]amix=inputs=2:duration=first:dropout_transition=0,afade=t=in:st=0:d=0.25,afade=t=out:st=${fadeOutStart}:d=0.30[aout]`
+    ].join(';');
+
+    const args = [
+      '-y',
+      '-ss', Math.max(0, startTime).toFixed(2),
+      '-i', sourceVideoPath,
+      '-i', narratorAudioPath,
+      '-t', durStr,
+      '-vf', vf,
+      '-filter_complex', filterComplex,
+      '-map', '0:v',
+      '-map', '[aout]',
+      '-threads', '2',
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '20',
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      '-ar', '48000',
+      '-ac', '2',
+      '-pix_fmt', 'yuv420p',
+      '-g', '30',
+      '-keyint_min', '30',
+      outputPath
+    ];
+
+    return new Promise((resolve, reject) => {
+      const child = spawn('ffmpeg', args);
+      let stderr = '';
+      child.stderr.on('data', (d) => { stderr += d.toString(); });
+      child.on('close', (code) => {
+        if (code === 0 && fs.existsSync(outputPath)) {
+          resolve(outputPath);
+        } else {
+          reject(new Error(`Narrator bridge render failed (${code}): ${stderr.slice(-300)}`));
+        }
+      });
+      child.on('error', reject);
+    });
+  }
+
+  /**
    * Renders a single 16:9 1080p chapter segment with chapter title overlay and 1080p normalization
    */
   public static async renderChapterSegment(params: {

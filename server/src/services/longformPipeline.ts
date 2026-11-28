@@ -9,6 +9,7 @@ import { FFmpegService } from './ffmpeg.js';
 import { transcribeAudio, TranscriptionResult } from './transcriber.js';
 import { LongformFFmpegService } from './longformFfmpeg.js';
 import { ObjectStorageService } from './objectStorage.js';
+import { NarratorService } from './narrator.js';
 
 export interface LongformLogEntry {
   timestamp: string;
@@ -283,6 +284,9 @@ export class LongformPipelineService {
           duration: Math.max(1, ch.end_time - ch.start_time),
           hook_text: ch.hook_text || '',
           summary: ch.summary || '',
+          intro_narration: idx === 0 ? (synthesisResult.intro_narration || '') : undefined,
+          bridge_narration: ch.bridge_narration || '',
+          outro_narration: idx === synthesisResult.chapters.length - 1 ? (synthesisResult.outro_narration || '') : undefined,
           order: idx + 1
         }));
 
@@ -297,9 +301,11 @@ export class LongformPipelineService {
       }
 
       // ----------------------------------------------------------------------
-      // STEP 4: RENDER CHAPTER SEGMENTS (1080p 16:9 + Lower Third Title Cards)
+      // STEP 4: RENDER CHAPTER SEGMENTS + NARRATOR BRIDGES (1080p 16:9)
       // ----------------------------------------------------------------------
-      const segmentPaths = await this.renderChapters(projectId, projectDir, sources, chapters);
+      const narratorEnabled = project.narrator_enabled !== 0;
+      const narratorVoice = project.narrator_voice || 'en-US-AndrewMultilingualNeural';
+      const segmentPaths = await this.renderChapters(projectId, projectDir, sources, chapters, narratorEnabled, narratorVoice);
 
       // ----------------------------------------------------------------------
       // STEP 5: CONCATENATE & MASTER AUDIO (-14 LUFS)
@@ -401,6 +407,8 @@ export class LongformPipelineService {
   ): Promise<{
     title: string;
     script_outline: string;
+    intro_narration?: string;
+    outro_narration?: string;
     chapters: Array<{
       title: string;
       source_index: number;
@@ -408,6 +416,7 @@ export class LongformPipelineService {
       end_time: number;
       hook_text: string;
       summary: string;
+      bridge_narration?: string;
     }>;
   }> {
     const apiKey = CONFIG.GROQ_API_KEY;
@@ -459,14 +468,19 @@ CRITICAL DIRECTING PRINCIPLES:
 4. ACCURATE TIMESTAMPS:
    - "start_time" and "end_time" must be in seconds within that source video's total duration.
    - "source_index" must match the 0-based source video index.
-5. TITLE & ON-SCREEN HOOKS:
-   - Main Title: High-CTR, under 70 characters, no clickbait clichés unless grounded in the videos.
+5. TITLE, ON-SCREEN HOOKS & DOCUMENTARY NARRATION:
+   - Main Title: High-CTR, under 60 characters, curiosity-driven, grounded in the videos.
    - Each chapter must have a punchy 2-4 word "hook_text" displayed on-screen.
+   - "intro_narration": A sharp 2-sentence Cold-Open Hook (20-30 words). ZERO fluff ("Hey guys", "Welcome back"). Dive straight into the core mystery/stakes.
+   - "bridge_narration" (for Chapters 2+): A natural 1-sentence spoken transition (10-16 words) connecting the previous chapter into this one so it feels like ONE cohesive documentary.
+   - "outro_narration": A tight 1-2 sentence closing takeaway (15-22 words).
 
 OUTPUT FORMAT: Return STRICT JSON ONLY:
 {
   "title": "Your Compelling Unified YouTube Title",
   "script_outline": "A cohesive narrative roadmap explaining how all chapters flow from start to end...",
+  "intro_narration": "Most players think GTA 6 is just about chaos—but Rockstar hid a silent system that tracks every single move you make...",
+  "outro_narration": "Every detail points to one conclusion: in Vice City, nothing you do goes unnoticed.",
   "chapters": [
     {
       "title": "Chapter 1: ...",
@@ -474,7 +488,8 @@ OUTPUT FORMAT: Return STRICT JSON ONLY:
       "start_time": 25.0,
       "end_time": 85.0,
       "hook_text": "SHORT PUNCHY HOOK",
-      "summary": "How this chapter hooks the viewer and leads into Chapter 2."
+      "summary": "How this chapter hooks the viewer and leads into Chapter 2.",
+      "bridge_narration": ""
     }
   ]
 }`;
@@ -535,13 +550,16 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
                 start_time: Number(start.toFixed(1)),
                 end_time: Number(end.toFixed(1)),
                 hook_text: String(ch.hook_text || 'INSANE REVELATION'),
-                summary: String(ch.summary || '')
+                summary: String(ch.summary || ''),
+                bridge_narration: String(ch.bridge_narration || '')
               };
             });
 
             return {
               title: parsed.title || topic,
               script_outline: parsed.script_outline || '',
+              intro_narration: typeof parsed.intro_narration === 'string' ? parsed.intro_narration : undefined,
+              outro_narration: typeof parsed.outro_narration === 'string' ? parsed.outro_narration : undefined,
               chapters: sanitizedChapters
             };
           }
@@ -633,13 +651,77 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
   }
 
   /**
-   * Renders each chapter segment with title cards and 1080p normalization
+   * Helper: synthesize & render a cinematic narrator B-roll bridge (with local + S3 checkpointing)
+   */
+  private static async renderBridgeIfNeeded(params: {
+    projectId: string;
+    segmentsDir: string;
+    bridgeName: string;
+    text: string;
+    voice: string;
+    sourceVideoPath: string;
+    brollStartTime: number;
+    kicker: string;
+    headline: string;
+  }): Promise<string | null> {
+    const { projectId, segmentsDir, bridgeName, text, voice, sourceVideoPath, brollStartTime, kicker, headline } = params;
+    const cleanText = (text || '').trim();
+    if (!cleanText || cleanText.length < 8) return null;
+
+    const bridgeOutPath = path.join(segmentsDir, `${bridgeName}.mp4`);
+    const s3Key = `longform/${projectId}/segments/${bridgeName}.mp4`;
+
+    if (fs.existsSync(bridgeOutPath) && fs.statSync(bridgeOutPath).size > 40000) {
+      return bridgeOutPath;
+    }
+    if (ObjectStorageService.isEnabled()) {
+      try {
+        const exists = await ObjectStorageService.headObject(s3Key);
+        if (exists) {
+          await ObjectStorageService.downloadToFile(`s3://${s3Key}`, bridgeOutPath);
+          if (fs.existsSync(bridgeOutPath) && fs.statSync(bridgeOutPath).size > 40000) {
+            return bridgeOutPath;
+          }
+        }
+      } catch {}
+    }
+
+    try {
+      const mp3Path = path.join(segmentsDir, `${bridgeName}.mp3`);
+      const tts = await NarratorService.synthesizeSpeech(cleanText, mp3Path, voice);
+      if (!tts) return null;
+
+      await LongformFFmpegService.renderNarratorBridgeSegment({
+        sourceVideoPath,
+        startTime: brollStartTime,
+        narratorAudioPath: tts.audioPath,
+        duration: tts.duration,
+        kicker,
+        headline,
+        outputPath: bridgeOutPath
+      });
+
+      if (ObjectStorageService.isEnabled()) {
+        ObjectStorageService.uploadFile(bridgeOutPath, s3Key, 'video/mp4').catch(() => {});
+      }
+      this.addLog(projectId, 'info', `🎙️ Rendered narrator ${bridgeName} (${tts.duration.toFixed(1)}s)`);
+      return bridgeOutPath;
+    } catch (err: any) {
+      this.addLog(projectId, 'warn', `Narrator ${bridgeName} skipped: ${err.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Renders each chapter segment with title cards, narrator B-roll bridges, and 1080p normalization
    */
   private static async renderChapters(
     projectId: string,
     projectDir: string,
     sources: Array<{ index: number; videoPath: string; title: string }>,
-    chapters: LongformChapter[]
+    chapters: LongformChapter[],
+    narratorEnabled: boolean = true,
+    narratorVoice: string = 'en-US-AndrewMultilingualNeural'
   ): Promise<string[]> {
     const segmentsDir = path.join(projectDir, 'segments');
     if (!fs.existsSync(segmentsDir)) {
@@ -648,10 +730,44 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
 
     const renderedPaths: string[] = [];
 
+    // 1. Cold-Open Narrator Hook before Chapter 1
+    if (narratorEnabled && chapters[0]?.intro_narration) {
+      this.notifyProgress(projectId, 'rendering', 53, 'Synthesizing Cold-Open Documentary Hook...');
+      const firstSrc = sources[chapters[0].source_index] || sources[0];
+      const introPath = await this.renderBridgeIfNeeded({
+        projectId,
+        segmentsDir,
+        bridgeName: 'bridge_intro',
+        text: chapters[0].intro_narration,
+        voice: narratorVoice,
+        sourceVideoPath: firstSrc.videoPath,
+        brollStartTime: Math.max(2, chapters[0].start_time + 5),
+        kicker: 'DOCUMENTARY BRIEF',
+        headline: chapters[0].hook_text || 'THE HIDDEN TRUTH'
+      });
+      if (introPath) renderedPaths.push(introPath);
+    }
+
     for (let i = 0; i < chapters.length; i++) {
       const ch = chapters[i];
       const src = sources[ch.source_index] || sources[0];
       const segProgress = Math.round(55 + (i / chapters.length) * 33);
+
+      // 2. Spoken Narrator Bridge before Chapters 2..N
+      if (narratorEnabled && i > 0 && ch.bridge_narration) {
+        const bridgePath = await this.renderBridgeIfNeeded({
+          projectId,
+          segmentsDir,
+          bridgeName: `bridge_${i}`,
+          text: ch.bridge_narration,
+          voice: narratorVoice,
+          sourceVideoPath: src.videoPath,
+          brollStartTime: Math.max(0, ch.start_time - 4),
+          kicker: `PART ${i + 1} / ${chapters.length}`,
+          headline: ch.hook_text || ch.title.replace(/^Chapter\s*\d+\s*:\s*/i, '')
+        });
+        if (bridgePath) renderedPaths.push(bridgePath);
+      }
 
       this.notifyProgress(
         projectId,
@@ -706,6 +822,24 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
 
       renderedPaths.push(segmentOutPath);
       this.addLog(projectId, 'info', `✅ Rendered chapter [${i + 1}/${chapters.length}]: "${ch.title}" (${Math.round(ch.end_time - ch.start_time)}s)`);
+    }
+
+    // 3. Closing Documentary Takeaway Outro
+    const lastCh = chapters[chapters.length - 1];
+    if (narratorEnabled && lastCh?.outro_narration) {
+      const lastSrc = sources[lastCh.source_index] || sources[0];
+      const outroPath = await this.renderBridgeIfNeeded({
+        projectId,
+        segmentsDir,
+        bridgeName: 'bridge_outro',
+        text: lastCh.outro_narration,
+        voice: narratorVoice,
+        sourceVideoPath: lastSrc.videoPath,
+        brollStartTime: Math.max(0, lastCh.end_time - 10),
+        kicker: 'FINAL TAKEAWAY',
+        headline: 'WHAT HAPPENS NEXT?'
+      });
+      if (outroPath) renderedPaths.push(outroPath);
     }
 
     return renderedPaths;
