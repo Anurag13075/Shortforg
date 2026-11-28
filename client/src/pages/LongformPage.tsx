@@ -51,7 +51,13 @@ const GTA6_PRESETS = [
 
 export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast }) => {
   const [projects, setProjects] = useState<LongformProject[]>([]);
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('sf_active_longform_id') || null;
+    } catch {
+      return null;
+    }
+  });
   const [activeProject, setActiveProject] = useState<LongformProject | null>(null);
   const [logs, setLogs] = useState<Array<{ timestamp: string; level: string; message: string }>>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -115,15 +121,21 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
     return () => clearInterval(poll);
   }, [activeProjectId, activeProject?.schedule_status]);
 
-  // When activeProjectId changes, fetch detailed project and subscribe to SSE
+  // When activeProjectId changes, persist it, fetch detailed project, and subscribe to SSE + fallback poll
   useEffect(() => {
     setVideoFileMissing(false);
+    try {
+      if (activeProjectId) localStorage.setItem('sf_active_longform_id', activeProjectId);
+      else localStorage.removeItem('sf_active_longform_id');
+    } catch {}
+
     if (!activeProjectId) {
       setActiveProject(null);
       return;
     }
 
     let unsubscribeSSE: (() => void) | null = null;
+    let pollTimer: any = null;
 
     const fetchDetail = async () => {
       try {
@@ -143,13 +155,13 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
           setLogs(initialLogs || []);
         } catch {}
 
-        // If project is still processing, subscribe to SSE
+        // If project is still processing, subscribe to SSE + 5s poll fallback
         if (['pending', 'downloading', 'transcribing', 'scripting', 'rendering'].includes(proj.status)) {
           unsubscribeSSE = api.subscribeLongformProgress(activeProjectId, (update) => {
             setActiveProject((prev) => (prev ? {
               ...prev,
               status: update.status as any,
-              progress: update.progress,
+              progress: update.progress >= 0 ? update.progress : prev.progress,
               stage_message: update.stageMessage,
               error_message: update.errorMessage || null
             } : null));
@@ -160,14 +172,27 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
 
             if (update.status === 'completed') {
               onToast('🏆 Long-form video synthesized successfully!', 'success');
+              if (pollTimer) clearInterval(pollTimer);
               api.getLongformProject(activeProjectId).then((updated) => {
                 setActiveProject(updated);
                 setEditedChapters(updated.chapters || []);
               });
             } else if (update.status === 'failed') {
+              if (pollTimer) clearInterval(pollTimer);
               onToast(`Synthesis failed: ${update.errorMessage}`, 'error');
             }
           });
+
+          pollTimer = setInterval(async () => {
+            try {
+              const latest = await api.getLongformProject(activeProjectId);
+              setActiveProject(latest);
+              if (latest.status === 'completed' || latest.status === 'failed') {
+                clearInterval(pollTimer);
+                setEditedChapters(latest.chapters || []);
+              }
+            } catch {}
+          }, 5000);
         }
       } catch (err: any) {
         onToast(`Failed to load project: ${err.message}`, 'error');
@@ -178,6 +203,7 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
 
     return () => {
       if (unsubscribeSSE) unsubscribeSSE();
+      if (pollTimer) clearInterval(pollTimer);
     };
   }, [activeProjectId]);
 

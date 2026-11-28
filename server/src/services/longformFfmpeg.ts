@@ -114,25 +114,19 @@ Dialogue: 0,0:00:00.55,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(250,450)} ${clean
     const fontsDir = this.getFontsDir();
     const fontsDirParam = fontsDir ? `:fontsdir=${this.escapeFilterPath(fontsDir)}` : '';
 
-    // Normalize to 1920x1080 16:9 edge-to-edge @ 30fps with unified cinematic color grade & subtle vignette
+    // Normalize to 1920x1080 16:9 edge-to-edge @ 30fps with unified cinematic color grade, subtle vignette, and smooth chapter fades
+    const fadeDur = Math.min(0.35, duration / 4);
+    const fadeOutStart = Math.max(0.1, duration - fadeDur).toFixed(2);
+    const aFadeDur = Math.min(0.25, duration / 4);
+    const aFadeOutStart = Math.max(0.1, duration - aFadeDur).toFixed(2);
+
     let vf = `scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=30,setsar=1,eq=contrast=1.06:saturation=1.10,vignette=PI/6`;
     if (hasSubtitles) {
       vf += `,subtitles=${escapedAssPath}${fontsDirParam}`;
     }
-    if (isFirst) {
-      vf += `,fade=t=in:st=0:d=0.45`;
-    }
-    if (isLast && duration > 1.5) {
-      vf += `,fade=t=out:st=${Math.max(0.2, duration - 0.6).toFixed(2)}:d=0.60`;
-    }
+    vf += `,fade=t=in:st=0:d=${fadeDur.toFixed(2)},fade=t=out:st=${fadeOutStart}:d=${fadeDur.toFixed(2)}`;
 
-    let af = `loudnorm=I=-14:TP=-1.0:LRA=7`;
-    if (isFirst) {
-      af += `,afade=t=in:st=0:d=0.30`;
-    }
-    if (isLast && duration > 1.5) {
-      af += `,afade=t=out:st=${Math.max(0.2, duration - 0.5).toFixed(2)}:d=0.50`;
-    }
+    const af = `loudnorm=I=-14:TP=-1.0:LRA=7,afade=t=in:st=0:d=${aFadeDur.toFixed(2)},afade=t=out:st=${aFadeOutStart}:d=${aFadeDur.toFixed(2)}`;
 
     const args = [
       '-y',
@@ -141,9 +135,10 @@ Dialogue: 0,0:00:00.55,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(250,450)} ${clean
       '-t', duration.toFixed(2),
       '-vf', vf,
       '-af', af,
+      '-threads', '2',
       '-c:v', 'libx264',
-      '-preset', 'fast',
-      '-crf', '18',
+      '-preset', 'veryfast',
+      '-crf', '20',
       '-c:a', 'aac',
       '-b:a', '192k',
       '-ar', '48000',
@@ -187,58 +182,7 @@ Dialogue: 0,0:00:00.55,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(250,450)} ${clean
   }
 
   /**
-   * Pairwise xfade + acrossfade helper (keeps memory low by decoding only 2 streams at a time)
-   */
-  private static async crossfadePair(
-    firstPath: string,
-    secondPath: string,
-    outputPath: string,
-    transition: string = 'dissolve',
-    fadeDuration: number = 0.45
-  ): Promise<string> {
-    const meta = await FFmpegService.getVideoMetadata(firstPath);
-    const d1 = Math.max(1.5, meta.duration || 10);
-    const dur = Math.min(fadeDuration, d1 * 0.2);
-    const offset = Math.max(0.1, d1 - dur).toFixed(3);
-
-    const filterComplex = `[0:v][1:v]xfade=transition=${transition}:duration=${dur.toFixed(3)}:offset=${offset}[v];[0:a][1:a]acrossfade=d=${dur.toFixed(3)}:c1=tri:c2=tri[a]`;
-
-    const args = [
-      '-y',
-      '-i', firstPath,
-      '-i', secondPath,
-      '-filter_complex', filterComplex,
-      '-map', '[v]',
-      '-map', '[a]',
-      '-c:v', 'libx264',
-      '-preset', 'fast',
-      '-crf', '18',
-      '-c:a', 'aac',
-      '-b:a', '256k',
-      '-ar', '48000',
-      '-ac', '2',
-      '-pix_fmt', 'yuv420p',
-      '-movflags', '+faststart',
-      outputPath
-    ];
-
-    return new Promise((resolve, reject) => {
-      const child = spawn('ffmpeg', args);
-      let stderr = '';
-      child.stderr.on('data', (d) => { stderr += d.toString(); });
-      child.on('close', (code) => {
-        if (code === 0 && fs.existsSync(outputPath)) {
-          resolve(outputPath);
-        } else {
-          reject(new Error(`xfade failed (${code}): ${stderr.slice(-300)}`));
-        }
-      });
-      child.on('error', reject);
-    });
-  }
-
-  /**
-   * Concatenate rendered chapter segments into the final master long-form video with seamless xfade + acrossfade transitions
+   * Fast stream-copy concatenation of normalized chapter segments (each segment is already 1080p@30fps, -14 LUFS, with smooth fade-in/out)
    */
   public static async concatenateSegments(
     segmentPaths: string[],
@@ -256,38 +200,7 @@ Dialogue: 0,0:00:00.55,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(250,450)} ${clean
       return outputPath;
     }
 
-    // Try seamless pairwise xfade + acrossfade transitions
-    try {
-      const transitions = ['dissolve', 'fadeblack', 'smoothleft', 'dissolve'];
-      const workDir = path.dirname(outputPath);
-      let current = segmentPaths[0];
-      const tempFiles: string[] = [];
-
-      for (let i = 1; i < segmentPaths.length; i++) {
-        const isLastStep = i === segmentPaths.length - 1;
-        const stepOut = isLastStep ? outputPath : path.join(workDir, `_xfade_step_${i}.mp4`);
-        if (!isLastStep) tempFiles.push(stepOut);
-
-        const transition = transitions[(i - 1) % transitions.length];
-        await this.crossfadePair(current, segmentPaths[i], stepOut, transition, 0.45);
-        current = stepOut;
-
-        if (onProgress) {
-          onProgress(Math.round((i / (segmentPaths.length - 1)) * 95));
-        }
-      }
-
-      // Clean up intermediate xfade temp files
-      for (const tmp of tempFiles) {
-        try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp); } catch {}
-      }
-      if (onProgress) onProgress(100);
-      return outputPath;
-    } catch (xfadeErr: any) {
-      console.warn('Pairwise xfade failed, falling back to standard concat:', xfadeErr.message);
-    }
-
-    // Fallback: standard concat with audio mastering (-14 LUFS YouTube standard)
+    // Fast stream-copy concat (1-2 seconds, ~20MB RAM — zero OOM risk)
     const fileContent = segmentPaths
       .map((p) => `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`)
       .join('\n');
@@ -298,15 +211,7 @@ Dialogue: 0,0:00:00.55,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(250,450)} ${clean
       '-f', 'concat',
       '-safe', '0',
       '-i', concatListFile,
-      '-af', 'loudnorm=I=-14:TP=-1.0:LRA=7',
-      '-c:v', 'libx264',
-      '-preset', 'fast',
-      '-crf', '18',
-      '-c:a', 'aac',
-      '-b:a', '256k',
-      '-ar', '48000',
-      '-ac', '2',
-      '-pix_fmt', 'yuv420p',
+      '-c', 'copy',
       '-movflags', '+faststart',
       outputPath
     ];
@@ -318,12 +223,13 @@ Dialogue: 0,0:00:00.55,0:00:04.50,ChapterBanner,,0,0,0,,{\\fad(250,450)} ${clean
       child.stderr.on('data', (data) => {
         stderr += data.toString();
         if (onProgress) {
-          onProgress(50);
+          onProgress(75);
         }
       });
 
       child.on('close', (code) => {
         if (code === 0 && fs.existsSync(outputPath)) {
+          if (onProgress) onProgress(100);
           resolve(outputPath);
         } else {
           reject(new Error(`Failed to concatenate segments. Code ${code}: ${stderr.slice(-400)}`));

@@ -246,40 +246,55 @@ export class LongformPipelineService {
       }
 
       // ----------------------------------------------------------------------
-      // STEP 3: AI DOCUMENTARY DIRECTOR (GROQ LLM)
+      // STEP 3: AI DOCUMENTARY DIRECTOR (GROQ LLM) - Reuse saved chapters on Retry!
       // ----------------------------------------------------------------------
-      this.notifyProgress(projectId, 'scripting', 48, 'Groq AI synthesizing narrative story arc & chapter timeline...');
+      let existingChapters: LongformChapter[] = [];
+      try {
+        const parsed = JSON.parse(project.chapters || '[]');
+        if (Array.isArray(parsed) && parsed.length > 0) existingChapters = parsed;
+      } catch {}
 
-      const synthesisResult = await this.synthesizeStory(
-        project.topic,
-        sources,
-        project.target_duration || 600
-      );
+      let generatedTitle = project.title || project.topic;
+      let scriptOutline = project.script_outline || '';
+      let chapters: LongformChapter[] = existingChapters;
 
-      const generatedTitle = synthesisResult.title || project.topic;
-      const scriptOutline = synthesisResult.script_outline || '';
-      const chapters: LongformChapter[] = synthesisResult.chapters.map((ch, idx) => ({
-        id: uuidv4(),
-        title: ch.title,
-        source_index: ch.source_index,
-        source_url: sources[ch.source_index]?.url || sourceUrls[0],
-        source_title: sources[ch.source_index]?.title || `Source ${ch.source_index + 1}`,
-        start_time: ch.start_time,
-        end_time: ch.end_time,
-        duration: Math.max(1, ch.end_time - ch.start_time),
-        hook_text: ch.hook_text || '',
-        summary: ch.summary || '',
-        order: idx + 1
-      }));
+      if (chapters.length > 0) {
+        this.addLog(projectId, 'info', `⚡ Resuming with ${chapters.length} saved chapters ("${generatedTitle}") — skipping AI re-synthesis`);
+        this.notifyProgress(projectId, 'rendering', 52, `Resuming ${chapters.length} saved chapters...`);
+      } else {
+        this.notifyProgress(projectId, 'scripting', 48, 'Groq AI synthesizing narrative story arc & chapter timeline...');
 
-      this.addLog(projectId, 'success', `🎬 AI Director created ${chapters.length} cohesive chapters: "${generatedTitle}"`);
+        const synthesisResult = await this.synthesizeStory(
+          project.topic,
+          sources,
+          project.target_duration || 600
+        );
 
-      // Update DB with generated script outline, auto-discovered topic/title, and chapters
-      db.prepare(`
-        UPDATE longform_projects
-        SET title = ?, topic = ?, chapters = ?, script_outline = ?, updated_at = ?
-        WHERE id = ?
-      `).run(generatedTitle, generatedTitle, JSON.stringify(chapters), scriptOutline, new Date().toISOString(), projectId);
+        generatedTitle = synthesisResult.title || project.topic;
+        scriptOutline = synthesisResult.script_outline || '';
+        chapters = synthesisResult.chapters.map((ch, idx) => ({
+          id: uuidv4(),
+          title: ch.title,
+          source_index: ch.source_index,
+          source_url: sources[ch.source_index]?.url || sourceUrls[0],
+          source_title: sources[ch.source_index]?.title || `Source ${ch.source_index + 1}`,
+          start_time: ch.start_time,
+          end_time: ch.end_time,
+          duration: Math.max(1, ch.end_time - ch.start_time),
+          hook_text: ch.hook_text || '',
+          summary: ch.summary || '',
+          order: idx + 1
+        }));
+
+        this.addLog(projectId, 'success', `🎬 AI Director created ${chapters.length} cohesive chapters: "${generatedTitle}"`);
+
+        // Update DB with generated script outline, auto-discovered topic/title, and chapters
+        db.prepare(`
+          UPDATE longform_projects
+          SET title = ?, topic = ?, chapters = ?, script_outline = ?, updated_at = ?
+          WHERE id = ?
+        `).run(generatedTitle, generatedTitle, JSON.stringify(chapters), scriptOutline, new Date().toISOString(), projectId);
+      }
 
       // ----------------------------------------------------------------------
       // STEP 4: RENDER CHAPTER SEGMENTS (1080p 16:9 + Lower Third Title Cards)
@@ -643,6 +658,25 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
       LongformFFmpegService.generateChapterAss(ch.title, ch.hook_text, assPath, i + 1, chapters.length);
 
       const segmentOutPath = path.join(segmentsDir, `seg_${i}.mp4`);
+      const s3SegKey = `longform/${projectId}/segments/seg_${i}.mp4`;
+
+      // Checkpoint: reuse locally cached segment or restore from S3 if interrupted earlier
+      let hasCachedSegment = fs.existsSync(segmentOutPath) && fs.statSync(segmentOutPath).size > 50000;
+      if (!hasCachedSegment && ObjectStorageService.isEnabled()) {
+        try {
+          const existsInS3 = await ObjectStorageService.headObject(s3SegKey);
+          if (existsInS3) {
+            await ObjectStorageService.downloadToFile(`s3://${s3SegKey}`, segmentOutPath);
+            hasCachedSegment = fs.existsSync(segmentOutPath) && fs.statSync(segmentOutPath).size > 50000;
+          }
+        } catch {}
+      }
+
+      if (hasCachedSegment) {
+        renderedPaths.push(segmentOutPath);
+        this.addLog(projectId, 'info', `⚡ Resumed cached chapter [${i + 1}/${chapters.length}]: "${ch.title}"`);
+        continue;
+      }
 
       await LongformFFmpegService.renderChapterSegment({
         sourceVideoPath: src.videoPath,
@@ -659,6 +693,10 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
           this.notifyProgress(projectId, 'rendering', scaled, `[${i + 1}/${chapters.length}] Rendering: ${p}%`);
         }
       });
+
+      if (ObjectStorageService.isEnabled()) {
+        ObjectStorageService.uploadFile(segmentOutPath, s3SegKey, 'video/mp4').catch(() => {});
+      }
 
       renderedPaths.push(segmentOutPath);
       this.addLog(projectId, 'info', `✅ Rendered chapter [${i + 1}/${chapters.length}]: "${ch.title}" (${Math.round(ch.end_time - ch.start_time)}s)`);
