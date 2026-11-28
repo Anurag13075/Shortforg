@@ -23,7 +23,8 @@ import {
   Edit2,
   Calendar,
   Image as ImageIcon,
-  Send
+  Send,
+  Upload
 } from 'lucide-react';
 import { LongformProject, LongformChapter, Channel } from '../types';
 import { api } from '../api';
@@ -95,6 +96,14 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
   const [isScheduling, setIsScheduling] = useState(false);
   const [videoFileMissing, setVideoFileMissing] = useState(false);
 
+  // Custom Title, Description & Thumbnail state
+  const [editedTitle, setEditedTitle] = useState('');
+  const [editedDescription, setEditedDescription] = useState('');
+  const [isSavingMetadata, setIsSavingMetadata] = useState(false);
+  const [isUploadingThumb, setIsUploadingThumb] = useState(false);
+  const [thumbVersion, setThumbVersion] = useState<number>(() => Date.now());
+  const thumbInputRef = useRef<HTMLInputElement>(null);
+
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   // Load all projects on mount
@@ -142,6 +151,8 @@ export const LongformPage: React.FC<LongformPageProps> = ({ channels, onToast })
         const proj = await api.getLongformProject(activeProjectId);
         setActiveProject(proj);
         setEditedChapters(proj.chapters || []);
+        setEditedTitle(proj.title || proj.topic || '');
+        setEditedDescription(proj.description || '');
         setHasUnsavedChanges(false);
         if (proj.assigned_channel_id) {
           setSelectedChannelId(proj.assigned_channel_id);
@@ -489,6 +500,58 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
 #GTA6 #GrandTheftAuto6 #RockstarGames #GamingNews`;
   };
 
+  // Sync default description into editor when project loads and has no custom description yet
+  useEffect(() => {
+    if (activeProject && !activeProject.description && editedDescription === '') {
+      setEditedDescription(generateYouTubeDescription());
+    }
+  }, [activeProject?.id, activeProject?.chapters?.length]);
+
+  const handleSaveMetadata = async () => {
+    if (!activeProject) return;
+    setIsSavingMetadata(true);
+    try {
+      const updated = await api.updateLongformMetadata(activeProject.id, {
+        title: editedTitle.trim() || activeProject.topic,
+        description: editedDescription
+      });
+      setActiveProject((prev) => (prev ? { ...prev, title: updated.title, description: updated.description } : updated));
+      onToast('✅ Title & description saved! Scheduled/immediate YouTube uploads will use these.', 'success');
+    } catch (err: any) {
+      onToast(`Failed to save metadata: ${err.message}`, 'error');
+    } finally {
+      setIsSavingMetadata(false);
+    }
+  };
+
+  const handleThumbnailFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeProject) return;
+    if (!file.type.startsWith('image/')) {
+      onToast('Please select a PNG, JPG, or WebP image file.', 'error');
+      return;
+    }
+    setIsUploadingThumb(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const updated = await api.uploadLongformThumbnail(activeProject.id, dataUrl);
+      setActiveProject((prev) => (prev ? { ...prev, thumbnail_path: updated.thumbnail_path } : updated));
+      setThumbVersion(Date.now());
+      setPreviewMode('thumbnail');
+      onToast('🖼️ Custom 16:9 thumbnail uploaded! Scheduled/immediate uploads will use it.', 'success');
+    } catch (err: any) {
+      onToast(`Thumbnail upload failed: ${err.message}`, 'error');
+    } finally {
+      setIsUploadingThumb(false);
+      e.target.value = '';
+    }
+  };
+
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.round(seconds % 60);
@@ -682,7 +745,7 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                         <video
                           controls
                           playsInline
-                          poster={api.getLongformThumbnailUrl(activeProject.id)}
+                          poster={`${api.getLongformThumbnailUrl(activeProject.id)}?v=${thumbVersion}`}
                           src={api.getLongformVideoUrl(activeProject.id)}
                           onError={() => setVideoFileMissing(true)}
                           className="w-full h-full object-contain"
@@ -692,7 +755,7 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                     ) : (
                       <div className="relative w-full h-full group/thumb">
                         <img
-                          src={api.getLongformThumbnailUrl(activeProject.id)}
+                          src={`${api.getLongformThumbnailUrl(activeProject.id)}?v=${thumbVersion}`}
                           alt="16:9 Thumbnail Preview"
                           className="w-full h-full object-cover"
                         />
@@ -705,16 +768,27 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                               {activeProject.title || activeProject.topic}
                             </p>
                           </div>
-                          <a
-                            href={api.getLongformThumbnailUrl(activeProject.id)}
-                            download="thumbnail_1080p.jpg"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-colors"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            Download Cover
-                          </a>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => thumbInputRef.current?.click()}
+                              disabled={isUploadingThumb}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600/90 hover:bg-purple-500 text-white backdrop-blur-md transition-colors cursor-pointer"
+                            >
+                              <Upload className="w-3.5 h-3.5" />
+                              {isUploadingThumb ? 'Uploading...' : 'Upload Mine'}
+                            </button>
+                            <a
+                              href={`${api.getLongformThumbnailUrl(activeProject.id)}?v=${thumbVersion}`}
+                              download="thumbnail_1080p.jpg"
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-colors"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Download Cover
+                            </a>
+                          </div>
                         </div>
                       </div>
                     )
@@ -755,9 +829,25 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                   </div>
 
                   {activeProject.status === 'completed' && activeProject.video_path && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        ref={thumbInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={handleThumbnailFileChange}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => thumbInputRef.current?.click()}
+                        disabled={isUploadingThumb}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600/20 hover:bg-purple-600/35 text-purple-200 border border-purple-500/30 transition-colors cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-purple-400" />
+                        {isUploadingThumb ? 'Uploading...' : 'Upload Thumbnail'}
+                      </button>
                       <a
-                        href={api.getLongformThumbnailUrl(activeProject.id)}
+                        href={`${api.getLongformThumbnailUrl(activeProject.id)}?v=${thumbVersion}`}
                         download={`${(activeProject.title || 'thumbnail').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40)}.jpg`}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/[0.06] hover:bg-white/[0.12] text-zinc-200 border border-white/[0.1] transition-colors"
                       >
@@ -1092,22 +1182,29 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
                     <h3 className="text-xs font-bold text-white tracking-wide">YOUTUBE SEO & CHAPTERS</h3>
                   </div>
                   <button
-                    onClick={() => copyToClipboard(generateYouTubeDescription(), 'desc')}
+                    onClick={() => copyToClipboard(editedDescription || generateYouTubeDescription(), 'desc')}
                     className="flex items-center gap-1 text-[11px] font-mono text-purple-300 hover:text-purple-200 transition-colors"
                   >
                     {copiedField === 'desc' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                    Copy Timestamps
+                    Copy Description
                   </button>
                 </div>
 
                 <div className="space-y-3">
                   <div>
-                    <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Video Title</label>
-                    <div className="flex items-center justify-between mt-1 p-2 rounded-lg bg-black/40 border border-white/[0.08] text-xs text-white">
-                      <span className="font-medium truncate mr-2">{activeProject.title || activeProject.topic}</span>
+                    <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Video Title (Editable)</label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <input
+                        type="text"
+                        value={editedTitle}
+                        onChange={(e) => setEditedTitle(e.target.value)}
+                        placeholder="Enter custom YouTube title..."
+                        className="w-full p-2 rounded-lg bg-black/40 border border-white/[0.08] focus:border-purple-500/60 text-xs text-white font-medium focus:outline-none"
+                      />
                       <button
-                        onClick={() => copyToClipboard(activeProject.title || activeProject.topic, 'title')}
-                        className="text-zinc-400 hover:text-white shrink-0"
+                        type="button"
+                        onClick={() => copyToClipboard(editedTitle || activeProject.title || activeProject.topic, 'title')}
+                        className="p-2 rounded-lg bg-black/40 border border-white/[0.08] text-zinc-400 hover:text-white shrink-0"
                       >
                         {copiedField === 'title' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                       </button>
@@ -1116,19 +1213,38 @@ Subscribe to VICECLIPS for the fastest, most detailed GTA 6 analysis and news on
 
                   <div>
                     <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Story Arc Narrative Outline</label>
-                    <div className="mt-1 p-2.5 rounded-lg bg-black/40 border border-white/[0.08] text-[11px] text-zinc-300 max-h-36 overflow-y-auto leading-relaxed">
+                    <div className="mt-1 p-2.5 rounded-lg bg-black/40 border border-white/[0.08] text-[11px] text-zinc-300 max-h-28 overflow-y-auto leading-relaxed">
                       {activeProject.script_outline || 'AI Director synthesized narrative roadmap connecting all source clips.'}
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">YouTube Ready Description & Chapters</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">YouTube Description & Chapters (Editable)</label>
+                      <button
+                        type="button"
+                        onClick={() => setEditedDescription(generateYouTubeDescription())}
+                        className="text-[10px] font-mono text-zinc-500 hover:text-zinc-300"
+                      >
+                        Reset Auto
+                      </button>
+                    </div>
                     <textarea
-                      readOnly
-                      value={generateYouTubeDescription()}
-                      className="w-full mt-1 p-2 rounded-lg bg-black/40 border border-white/[0.08] text-[11px] font-mono text-zinc-400 h-32 resize-none focus:outline-none"
+                      value={editedDescription}
+                      onChange={(e) => setEditedDescription(e.target.value)}
+                      placeholder="Enter custom YouTube description & timestamps..."
+                      className="w-full mt-1 p-2 rounded-lg bg-black/40 border border-white/[0.08] focus:border-purple-500/60 text-[11px] font-mono text-zinc-200 h-36 resize-y focus:outline-none"
                     />
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveMetadata}
+                    disabled={isSavingMetadata}
+                    className="w-full py-2 rounded-lg text-xs font-bold bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white transition-colors cursor-pointer"
+                  >
+                    {isSavingMetadata ? 'Saving Title & Description...' : 'Save Title & Description for YouTube'}
+                  </button>
                 </div>
               </div>
             </div>

@@ -67,8 +67,8 @@ app.use(cors({
   origin: [CONFIG.APP_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'],
   credentials: true
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
 // Serve static storage files if needed
 app.use('/storage', express.static(CONFIG.STORAGE_DIR));

@@ -335,6 +335,9 @@ export function initDatabase() {
   try {
     db.exec("ALTER TABLE longform_projects ADD COLUMN posted_at TEXT;");
   } catch {}
+  try {
+    db.exec("ALTER TABLE longform_projects ADD COLUMN description TEXT;");
+  } catch {}
 
   // Recover any jobs stuck in mid-flight states after an unexpected restart
   try {
@@ -446,6 +449,7 @@ export interface LongformProjectRecord {
   error_message: string | null;
   chapters: string | null; // JSON array of LongformChapter
   script_outline: string | null;
+  description?: string | null;
   video_path: string | null;
   thumbnail_path: string | null;
   assigned_channel_id: string | null;

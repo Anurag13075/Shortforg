@@ -147,6 +147,7 @@ export interface LongformProject {
   chapters?: LongformChapter[];
   chapter_count?: number;
   script_outline: string | null;
+  description?: string | null;
   video_path: string | null;
   thumbnail_path: string | null;
   assigned_channel_id: string | null;

@@ -440,6 +440,103 @@ longformRouter.all('/:id/download', async (req: Request, res: Response) => {
 });
 
 /**
+ * PATCH /api/longform/:id/metadata - Update custom YouTube title and description
+ */
+longformRouter.patch('/:id/metadata', (req: Request, res: Response) => {
+  const projectId = String(req.params.id);
+  const { title, description } = req.body;
+
+  try {
+    const project = db.prepare('SELECT * FROM longform_projects WHERE id = ?').get(projectId) as LongformProjectRecord | undefined;
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' });
+    }
+
+    const nextTitle = typeof title === 'string' && title.trim() ? title.trim() : project.title;
+    const nextDescription = typeof description === 'string' ? description : project.description ?? null;
+
+    db.prepare(`
+      UPDATE longform_projects
+      SET title = ?, description = ?, updated_at = ?
+      WHERE id = ?
+    `).run(nextTitle, nextDescription, new Date().toISOString(), projectId);
+
+    const updated = db.prepare(`
+      SELECT p.*, ch.title as channel_title, ch.avatar_url as channel_avatar
+      FROM longform_projects p
+      LEFT JOIN channels ch ON p.assigned_channel_id = ch.id
+      WHERE p.id = ?
+    `).get(projectId) as any;
+
+    res.json({ success: true, data: updated, message: 'Title & description saved!' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/longform/:id/thumbnail - Upload a custom 16:9 thumbnail image (base64 data URL)
+ */
+longformRouter.post('/:id/thumbnail', async (req: Request, res: Response) => {
+  const projectId = String(req.params.id);
+  const { imageDataUrl } = req.body;
+
+  if (!imageDataUrl || typeof imageDataUrl !== 'string') {
+    return res.status(400).json({ success: false, error: 'imageDataUrl is required' });
+  }
+
+  const match = imageDataUrl.match(/^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/i);
+  if (!match) {
+    return res.status(400).json({ success: false, error: 'Invalid image format. Please upload a PNG, JPG, or WebP image.' });
+  }
+
+  try {
+    const project = db.prepare('SELECT * FROM longform_projects WHERE id = ?').get(projectId) as LongformProjectRecord | undefined;
+    if (!project) {
+      return res.status(404).json({ success: false, error: 'Project not found' });
+    }
+
+    const mimeType = match[1].toLowerCase();
+    const ext = match[2].toLowerCase() === 'jpeg' ? 'jpg' : match[2].toLowerCase();
+    const buffer = Buffer.from(match[3], 'base64');
+
+    const projectDir = path.join(CONFIG.STORAGE_DIR, `longform_${projectId}`);
+    if (!fs.existsSync(projectDir)) {
+      fs.mkdirSync(projectDir, { recursive: true });
+    }
+
+    const localThumbPath = path.join(projectDir, `custom_thumbnail.${ext}`);
+    fs.writeFileSync(localThumbPath, buffer);
+
+    let storedThumbPath = path.relative(CONFIG.STORAGE_DIR, localThumbPath).replace(/\\/g, '/');
+    if (ObjectStorageService.isEnabled()) {
+      storedThumbPath = await ObjectStorageService.uploadFile(
+        localThumbPath,
+        `longform/${projectId}/custom_thumbnail_${Date.now()}.${ext}`,
+        mimeType
+      );
+    }
+
+    db.prepare(`
+      UPDATE longform_projects
+      SET thumbnail_path = ?, updated_at = ?
+      WHERE id = ?
+    `).run(storedThumbPath, new Date().toISOString(), projectId);
+
+    const updated = db.prepare(`
+      SELECT p.*, ch.title as channel_title, ch.avatar_url as channel_avatar
+      FROM longform_projects p
+      LEFT JOIN channels ch ON p.assigned_channel_id = ch.id
+      WHERE p.id = ?
+    `).get(projectId) as any;
+
+    res.json({ success: true, data: updated, message: 'Custom thumbnail uploaded!' });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * POST /api/longform/:id/assign-channel - Assign YouTube channel
  */
 longformRouter.post('/:id/assign-channel', (req: Request, res: Response) => {

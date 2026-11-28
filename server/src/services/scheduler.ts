@@ -449,7 +449,10 @@ export class SchedulerService {
         return `${stamp} - ${ch.title}`;
       });
 
-      const description = `${proj.title || proj.topic}\n\n${proj.script_outline || ''}\n\nTIMESTAMPS:\n${timestampLines.join('\n')}\n\n#GTA6 #GrandTheftAuto6 #Gaming`;
+      const autoDescription = `${proj.title || proj.topic}\n\n${proj.script_outline || ''}\n\nTIMESTAMPS:\n${timestampLines.join('\n')}\n\n#GTA6 #GrandTheftAuto6 #Gaming`;
+      const description = proj.description && proj.description.trim().length > 0
+        ? proj.description.trim()
+        : autoDescription;
 
       console.log(`🚀 Uploading Long-Form Video "${proj.title || proj.topic}" to YouTube channel ${proj.assigned_channel_id}...`);
 

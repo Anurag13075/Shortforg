@@ -529,6 +529,18 @@ export const api = {
       method: 'POST'
     }),
 
+  updateLongformMetadata: (id: string, payload: { title?: string; description?: string }) =>
+    request<LongformProject>(`/api/longform/${id}/metadata`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    }),
+
+  uploadLongformThumbnail: (id: string, imageDataUrl: string) =>
+    request<LongformProject>(`/api/longform/${id}/thumbnail`, {
+      method: 'POST',
+      body: JSON.stringify({ imageDataUrl })
+    }),
+
   getLongformVideoUrl: (id: string) => `/api/longform/${id}/video`,
   getLongformThumbnailUrl: (id: string) => `/api/longform/${id}/thumbnail`,
   getLongformDownloadUrl: (id: string) => `/api/longform/${id}/download`,
