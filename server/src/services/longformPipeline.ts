@@ -590,8 +590,8 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
   }
 
   /**
-   * Snaps a target timestamp to the nearest natural speech pause or sentence boundary within ±4s
-   * so chapters never start or cut off mid-word.
+   * Snaps a target timestamp to the nearest true sentence ending or natural speech pause within ±12s
+   * so chapters never start or cut off mid-sentence.
    */
   private static snapToSpeechBoundary(
     words: Array<{ word: string; start: number; end: number }>,
@@ -603,19 +603,25 @@ Analyze all ${sources.length} videos and synthesize a complete 7-10 chapter cohe
 
     for (let i = 0; i < words.length; i++) {
       const w = words[i];
-      const candidate = mode === 'start' ? Math.max(0, w.start - 0.15) : w.end + 0.2;
-      const dist = Math.abs(candidate - targetSec);
-      if (dist > 4.0) continue;
-
       const prev = i > 0 ? words[i - 1] : null;
       const next = i + 1 < words.length ? words[i + 1] : null;
       const gapBefore = prev ? w.start - prev.end : 1.0;
       const gapAfter = next ? next.start - w.end : 1.0;
-      const endsSentence = /[.?!]$/.test((mode === 'start' ? prev?.word : w.word) || '');
 
-      const isPause = mode === 'start' ? gapBefore >= 0.3 : gapAfter >= 0.3;
-      const penalty = (endsSentence ? 0 : 1.5) + (isPause ? 0 : 1.0);
-      const score = dist + penalty;
+      // Leave a natural breath/tail before fade-out without bleeding into the next sentence
+      const tailPad = next ? Math.min(0.35, Math.max(0.15, gapAfter * 0.6)) : 0.35;
+      const candidate = mode === 'start' ? Math.max(0, w.start - 0.2) : w.end + tailPad;
+      const dist = Math.abs(candidate - targetSec);
+      if (dist > 12.0) continue;
+
+      const endsSentence = /[.?!]["')\]]*$/.test((mode === 'start' ? prev?.word : w.word) || '');
+      const gap = mode === 'start' ? gapBefore : gapAfter;
+      const pausePenalty = gap >= 0.45 ? 0 : (gap >= 0.25 ? 2.0 : 5.0);
+      const sentencePenalty = endsSentence ? 0 : 6.0;
+      // Prefer finishing a thought slightly past targetSec rather than cutting early
+      const earlyCutPenalty = mode === 'end' && candidate < targetSec ? 1.5 : 0;
+
+      const score = dist * 0.6 + sentencePenalty + pausePenalty + earlyCutPenalty;
 
       if (score < bestScore) {
         bestScore = score;
